@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Concert Seat Selection</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="container">
+    <h1>Concert Seat Selection</h1>
+    <label>User Code (optional):</label>
+    <input type="text" id="userCode" placeholder="e.g., QR12345">
+    <div class="grid-container" id="seatGrid"></div>
+    <div class="form">
+      <input type="text" id="name" placeholder="Your Name">
+      <input type="tel" id="mobile" placeholder="Mobile Number">
+      <button id="submitBtn">Submit</button>
+      <div id="status"></div>
+    </div>
+  </div>
+  <script>
+    const SEAT_COUNT = {{ seat_count|int }};
+  </script>
+  <script src="{{ url_for('static', filename='seats.js') }}"></script>
+</body>
+</html>
