@@ -11,7 +11,7 @@ from io import BytesIO
 GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "ConcertBookings")
 GOOGLE_SHEET_KEY = os.getenv("GOOGLE_SHEET_KEY")
 SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE", "/etc/secrets/service_account.json")
-APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:5000")
+APP_BASE_URL = os.getenv("APP_BASE_URL", "https://concert-seats-70k7.onrender.com")
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
