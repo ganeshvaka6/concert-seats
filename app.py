@@ -12,6 +12,7 @@ GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "ConcertBookings")
 GOOGLE_SHEET_KEY = os.getenv("GOOGLE_SHEET_KEY")
 SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE", "/etc/secrets/service_account.json")
 APP_BASE_URL = os.getenv("APP_BASE_URL", "https://concert-seats-70k7.onrender.com")
+CLEAR_TOKEN = os.getenv("CLEAR_TOKEN")  # Optional security token
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -34,10 +35,10 @@ def get_sheet():
     return ws
 
 
-def clear_google_sheet():
+def clear_google_sheet_values():
     ws = get_sheet()
-    ws.resize(1)  # Keep only header row
-    return "Sheet cleared successfully."
+    ws.batch_clear(["A2:ZZZ"])  # Clears all rows except header
+    return "Sheet contents cleared below header."
 
 @app.route("/", methods=["GET"])
 def index():
@@ -82,7 +83,8 @@ def booked_seats():
 
 @app.route("/qr", methods=["GET"])
 def qr():
-    img = qrcode.make(APP_BASE_URL)
+    target = APP_BASE_URL.rstrip("/")
+    img = qrcode.make(target)
     buf = BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
@@ -93,9 +95,13 @@ def qr():
 
 @app.route("/clear-sheet", methods=["POST"])
 def clear_sheet_route():
+    if CLEAR_TOKEN:
+        auth = request.headers.get("X-CLEAR-TOKEN")
+        if not auth or auth != CLEAR_TOKEN:
+            return jsonify({"ok": False, "message": "Unauthorized"}), 401
     try:
-        message = clear_google_sheet()
-        return jsonify({"ok": True, "message": message})
+        msg = clear_google_sheet_values()
+        return jsonify({"ok": True, "message": msg})
     except Exception as e:
         return jsonify({"ok": False, "message": str(e)}), 500
 
