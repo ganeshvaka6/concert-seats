@@ -33,9 +33,15 @@ def get_sheet():
         ws.append_row(["Timestamp", "User Code", "Name", "Mobile", "Selected Seats"])
     return ws
 
+
+def clear_google_sheet():
+    ws = get_sheet()
+    ws.resize(1)  # Keep only header row
+    return "Sheet cleared successfully."
+
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html", seat_count=300)
+    return render_template("index.html", seat_count=200)
 
 @app.route("/submit", methods=["POST"])
 def submit():
@@ -83,6 +89,15 @@ def qr():
     response = send_file(buf, mimetype="image/png")
     response.headers["Cache-Control"] = "public, max-age=86400"
     return response
+
+
+@app.route("/clear-sheet", methods=["POST"])
+def clear_sheet_route():
+    try:
+        message = clear_google_sheet()
+        return jsonify({"ok": True, "message": message})
+    except Exception as e:
+        return jsonify({"ok": False, "message": str(e)}), 500
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
