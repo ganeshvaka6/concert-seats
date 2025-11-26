@@ -23,27 +23,23 @@
     }
     #seat-container {
         display: grid;
-        grid-template-columns: repeat(20, 40px);
-        gap: 6px;
         justify-content: center;
-        margin-bottom: 20px;
-    }
-    font-size: 14px;
+        font-size: 14px;
         border-radius: 5px;
         cursor: pointer;
-        color: black; /* Seat number text color */
+        color: black;
     }
     .available {
-        background-color: white;       /* White box */
-        border: 2px solid #28a745;     /* Green border */
+        background-color: white;
+        border: 2px solid #28a745;
     }
     .selected {
-        background-color: #28a745;     /* Green when selected */
-        color: white;                  /* White text when selected */
-        border: 2px solid #000;        /* Black border for selected */
+        background-color: #28a745;
+        color: white;
+        border: 2px solid #000;
     }
     .booked {
-        background-color: #6c757d;     /* Gray for booked */
+        background-color: #6c757d;
         color: white;
         cursor: not-allowed;
     }
