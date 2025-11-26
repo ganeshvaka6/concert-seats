@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Concert Seat Booking</title>
+<title>Potter's House Live Music Concert Registrations</title>
 <style>
     body {
         font-family: Arial, sans-serif;
@@ -15,18 +15,20 @@
         text-align: center;
         color: #333;
     }
+    .event-details {
+        text-align: center;
+        margin-bottom: 20px;
+        font-size: 16px;
+        color: #444;
+    }
     #seat-container {
         display: grid;
         grid-template-columns: repeat(20, 40px);
-       -bottom: 20px;
-    }
-    .seat {
-        width: 40px;
-        height: 40px;
-        display: flex;
-        align-items: center;
+        gap: 6px;
         justify-content: center;
-        font-size: 14px;
+        margin-bottom: 20px;
+    }
+    font-size: 14px;
         border-radius: 5px;
         cursor: pointer;
         color: black; /* Seat number text color */
@@ -75,7 +77,16 @@
 </style>
 </head>
 <body>
-<h1>Concert Seat Booking</h1>
+<h1>Potter's House Live Music Concert Registrations</h1>
+<div class="event-details">
+    <p><strong>Event Timing:</strong> November 29th, 2025, at 7:00 PM</p>
+    <p><strong>Event Address:</strong><br>
+    Potter’s House, 3rd Floor, Gachibowli Stadium Road,<br>
+    above Westside, next to Himagiri Hospital,<br>
+    Rajeev Gandhi Nagar, Indira Nagar,<br>
+    Gachibowli, Hyderabad, Telangana 500032</p>
+</div>
+
 <div id="seat-container"></div>
 
 <div id="selected-info">
