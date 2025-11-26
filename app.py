@@ -1,4 +1,5 @@
 import os
+import json
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_file
 import gspread
@@ -6,17 +7,26 @@ from google.oauth2.service_account import Credentials
 import qrcode
 from io import BytesIO
 
-GOOGLE_SHEET_NAME = os.getenv("1dnwP1uMBZWiKn9j9tmJqQhs_3pgjsSoF4Rr4XqZRucw", "ConcertBookings")
-SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE", "service_account.json")
+# Environment variables
+GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "ConcertBookings")
+GOOGLE_SHEET_KEY = os.getenv("GOOGLE_SHEET_KEY")
+SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE", "/etc/secrets/service_account.json")
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:5000")
+
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
 
 app = Flask(__name__)
 
+def build_creds():
+    return Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+
 def get_sheet():
-    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=scopes)
+    creds = build_creds()
     client = gspread.authorize(creds)
-    sh = client.open(GOOGLE_SHEET_NAME)
+    sh = client.open_by_key(GOOGLE_SHEET_KEY) if GOOGLE_SHEET_KEY else client.open(GOOGLE_SHEET_NAME)
     ws = sh.sheet1
     values = ws.get_all_values()
     if not values:
@@ -29,13 +39,19 @@ def index():
 
 @app.route("/submit", methods=["POST"])
 def submit():
-    data = request.get_json(force=True)
-    user_code = data.get("user_code", "").strip()
-    name = data.get("name", "").strip()
-    mobile = data.get("mobile", "").strip()
+    data = request.get_json(force=True) or {}
+    user_code = str(data.get("user_code", "")).strip()
+    name = str(data.get("name", "")).strip()
+    mobile = str(data.get("mobile", "")).strip()
     seats = data.get("seats", [])
+
     if not name or not mobile or not seats:
         return jsonify({"ok": False, "message": "Name, Mobile and at least one seat are required."}), 400
+    if not all(str(s).isdigit() for s in seats):
+        return jsonify({"ok": False, "message": "Seats must be numeric."}), 400
+    if not mobile.isdigit() or len(mobile) < 10:
+        return jsonify({"ok": False, "message": "Invalid mobile number."}), 400
+
     try:
         ws = get_sheet()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -49,24 +65,25 @@ def submit():
 def booked_seats():
     try:
         ws = get_sheet()
-        values = ws.get_all_values()[1:]  # skip header
+        col_values = ws.col_values(5)[1:]  # skip header
         booked = []
-        for row in values:
-            if len(row) >= 5 and row[4]:
-                booked.extend([int(s.strip()) for s in row[4].split(",") if s.strip().isdigit()])
+        for v in col_values:
+            if v:
+                booked.extend([int(s.strip()) for s in v.split(",") if s.strip().isdigit()])
         return jsonify({"booked": booked})
     except Exception as e:
-        return jsonify({"booked": [], "error": str(e)})
+        return jsonify({"booked": [], "error": str(e)}), 500
 
 @app.route("/qr", methods=["GET"])
 def qr():
-    target_url = APP_BASE_URL
-    img = qrcode.make(target_url)
+    img = qrcode.make(APP_BASE_URL)
     buf = BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
-    return send_file(buf, mimetype="image/png")
-
+    response = send_file(buf, mimetype="image/png")
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
