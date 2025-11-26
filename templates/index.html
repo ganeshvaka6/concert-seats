@@ -1,26 +1,164 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Concert Seat Selection</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Concert Seat Booking</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f8f9fa;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        #seat-container {
+            display: grid;
+            grid-template-columns: repeat(15, 40px);
+            gap: 8px;
+            justify-content: center;
+                       height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            border-radius: 5px;
+            cursor: pointer;
+            color: #fff;
+        }
+        .available { background-color: #28a745; } /* Green */
+        .selected { background-color: #fff; color: #000; border: 2px solid #000; }
+        .booked { background-color: #6c757d; cursor: not-allowed; } /* Gray */
+        #selected-info {
+            margin: 20px auto;
+            max-width: 400px;
+            background: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+        #selected-info div {
+            margin-bottom: 10px;
+        }
+        input[type="text"] {
+            width: 45%;
+            padding: 5px;
+            margin: 5px;
+        }
+        button {
+            background-color: #007bff;
+            color: #fff;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <h1>Concert Seat Selection</h1>
-    <label>User Code (optional):</label>
-    <input type="text" id="userCode" placeholder="e.g., QR12345">
-    <div class="grid-container" id="seatGrid"></div>
-    <div class="form">
-      <input type="text" id="name" placeholder="Your Name">
-      <input type="tel" id="mobile" placeholder="Mobile Number">
-      <button id="submitBtn">Submit</button>
-      <div id="status"></div>
+    <h1>Concert Seat Booking</h1>
+    <div id="seat-container"></div>
+
+    <div id="selected-info">
+        <h3>Selected Seats</h3>
+        <div id="seat-details"></div>
+        <button id="submit-btn">Book Seats</button>
     </div>
-  </div>
-  <script>
-    const SEAT_COUNT = {{ seat_count|int }};
-  </script>
-  <script src="{{ url_for('static', filename='seats.js') }}"></script>
+
+    <script>
+        const seatCount = {{ seat_count }};
+        let selectedSeats = [];
+
+        async function loadSeats() {
+            const seatContainer = document.getElementById('seat-container');
+            const response = await fetch('/booked-seats');
+            const data = await response.json();
+            const bookedSeats = data.booked || [];
+
+            for (let i = 1; i <= seatCount; i++) {
+                const seat = document.createElement('div');
+                seat.classList.add('seat');
+                seat.textContent = i;
+
+                if (bookedSeats.includes(i)) {
+                    seat.classList.add('booked');
+                } else {
+                    seat.classList.add('available');
+                    seat.addEventListener('click', () => toggleSeat(seat, i));
+                }
+
+                seatContainer.appendChild(seat);
+            }
+        }
+
+        function toggleSeat(seat, seatNumber) {
+            if (selectedSeats.includes(seatNumber)) {
+                selectedSeats = selectedSeats.filter(s => s !== seatNumber);
+                seat.classList.remove('selected');
+                seat.classList.add('available');
+            } else {
+                selectedSeats.push(seatNumber);
+                seat.classList.remove('available');
+                seat.classList.add('selected');
+            }
+            updateSelectedInfo();
+        }
+
+        function updateSelectedInfo() {
+            const seatDetails = document.getElementById('seat-details');
+            seatDetails.innerHTML = selectedSeats.map(s => `
+                <div>
+                    <strong>Seat ${s}</strong>
+                    <input type="text" placeholder="Name" id="name-${s}">
+                    <input type="text" placeholder="Mobile" id="mobile-${s}">
+                </div>
+            `).join('');
+        }
+
+        document.getElementById('submit-btn').addEventListener('click', async () => {
+            if (selectedSeats.length === 0) {
+                alert('Please select at least one seat.');
+                return;
+            }
+
+            const bookingData = selectedSeats.map(s => ({
+                seat: s,
+                name: document.getElementById(`name-${s}`).value,
+                mobile: document.getElementById(`mobile-${s}`).value
+            }));
+
+            // Validate all fields
+            for (let b of bookingData) {
+                if (!b.name || !b.mobile) {
+                    alert(`Please enter Name and Mobile for Seat ${b.seat}`);
+                    return;
+                }
+            }
+
+            // Send booking request
+            const response = await fetch('/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: bookingData.map(b => b.name).join(', '),
+                    mobile: bookingData.map(b => b.mobile).join(', '),
+                    seats: selectedSeats
+                })
+            });
+
+            const result = await response.json();
+            alert(result.message);
+            if (result.ok) {
+                location.reload(); // Refresh to update booked seats
+            }
+        });
+
+        window.onload = loadSeats;
+    </script>
 </body>
 </html>
