@@ -31,7 +31,7 @@
         box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
 
-    /* Your original seat-container grid stays; we'll render rows inside it */
+    /* Your original seat-container grid stays; rows render inside it */
     #seat-container {
         display: grid;
         grid-template-columns: repeat(20, 40px);
@@ -39,10 +39,10 @@
         justify-content: center;
         margin-top: 20px;
 
-        /* Mobile-friendly: allow horizontal scroll if grid is wider than viewport */
+        /* Mobile-friendly: allow horizontal scroll if row is wider than viewport */
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
-        padding-bottom: 8px; /* space for scrollbar on mobile */
+        padding-bottom: 8px;
     }
 
     .seat {
@@ -56,7 +56,7 @@
         cursor: pointer;
         color: black;
         user-select: none;
-        box-sizing: border-box; /* ensure borders don’t expand size */
+        box-sizing: border-box;
     }
     .available {
         background-color: white;
@@ -113,16 +113,16 @@
         100% { opacity: 1; }
     }
 
-    /* ===== Added: Row and Aisle styles to create gaps after 5 and 10 ===== */
+    /* Added: Row and Aisle styles to create gaps after 5 and 10 */
     .row {
         display: grid;
-        grid-template-columns: repeat(17, 40px); /* 15 seats + 2 aisle spacers */
+        grid-template-columns: repeat(17, 40px); /* 15 seats + 2 aisles */
         gap: 5px;
         margin-bottom: 10px;
         grid-column: 1 / -1;    /* each row spans full width of seat-container grid */
         justify-content: center;
         align-items: center;
-        width: max-content;     /* prevent clipping on small screens */
+        width: max-content;     /* prevents clipping on small screens */
     }
     .aisle {
         width: 40px;
@@ -142,7 +142,7 @@
         border-radius: 4px;
     }
 
-    /* ===== Responsive adjustments to ensure full visibility on mobile ===== */
+    /* Responsive adjustments for mobile */
     @media (max-width: 768px) {
         .row {
             grid-template-columns: repeat(17, 36px);
@@ -162,7 +162,6 @@
             height: 26px;
         }
     }
-
     @media (max-width: 480px) {
         .row {
             grid-template-columns: repeat(17, 32px);
@@ -182,7 +181,6 @@
             height: 22px;
             border-width: 2px;
         }
-
         #selected-info {
             max-width: 95%;
             padding: 12px;
@@ -220,7 +218,7 @@
 const seatCount = 200; // Total seats
 let selectedSeats = [];
 
-/* Added: constants for row pattern */
+/* Row pattern constants */
 const seatsPerRow = 15;           // seats per row (excluding aisles)
 const aislePositions = [5, 10];   // insert aisle AFTER these seat indexes in each row
 
@@ -231,9 +229,9 @@ async function loadSeats() {
     try {
         const response = await fetch('/booked-seats');
         const data = await response.json();
-        const bookedSeats = data.booked || [];
+        const bookedSeats = Array.isArray(data.booked) ? data.booked : [];
 
-        // Render rows with aisles between 5-6 and 10-11
+        // Render rows with aisles after 5 and 10
         let seatNumber = 1;
         const totalRows = Math.ceil(seatCount / seatsPerRow);
 
@@ -244,13 +242,15 @@ async function loadSeats() {
             for (let i = 1; i <= seatsPerRow && seatNumber <= seatCount; i++) {
                 const seat = document.createElement('div');
                 seat.classList.add('seat');
-                seat.textContent = seatNumber;
+                seat.textContent = String(seatNumber);
 
                 if (bookedSeats.includes(seatNumber)) {
                     seat.classList.add('booked');
                 } else {
                     seat.classList.add('available');
-                    seat.addEventListener('click', () => toggleSeat(seat, seatNumber));
+                    seat.addEventListener('click', function () {
+                        toggleSeat(seat, seatNumber);
+                    });
                 }
 
                 rowDiv.appendChild(seat);
@@ -269,7 +269,8 @@ async function loadSeats() {
         }
     } catch (err) {
         console.error('Failed to load booked seats:', err);
-        // Fallback: render without booked state if endpoint fails
+
+        // Fallback render if endpoint fails
         let seatNumber = 1;
         const totalRows = Math.ceil(seatCount / seatsPerRow);
         for (let row = 1; row <= totalRows; row++) {
@@ -278,8 +279,10 @@ async function loadSeats() {
             for (let i = 1; i <= seatsPerRow && seatNumber <= seatCount; i++) {
                 const seat = document.createElement('div');
                 seat.classList.add('seat', 'available');
-                seat.textContent = seatNumber;
-                seat.addEventListener('click', () => toggleSeat(seat, seatNumber));
+                seat.textContent = String(seatNumber);
+                seat.addEventListener('click', function () {
+                    toggleSeat(seat, seatNumber);
+                });
                 rowDiv.appendChild(seat);
                 if (aislePositions.includes(i)) {
                     const aisle = document.createElement('div');
@@ -295,7 +298,7 @@ async function loadSeats() {
 
 function toggleSeat(seat, seatNumber) {
     if (selectedSeats.includes(seatNumber)) {
-        selectedSeats = selectedSeats.filter(s => s !== seatNumber);
+        selectedSeats = selectedSeats.filter(function (s) { return s !== seatNumber; });
         seat.classList.remove('selected');
         seat.classList.add('available');
     } else {
@@ -308,30 +311,35 @@ function toggleSeat(seat, seatNumber) {
 
 function updateSelectedInfo() {
     const seatDetails = document.getElementById('seat-details');
-    seatDetails.innerHTML = selectedSeats.map(s => `
-        <div>
-            <strong>Your Selected Seat Number: ${s}</strong><br>
-            <input type="text" placeholder="Name" id="name-${s}">
-            <input type="text" placeholder="Phone number" id="mobile-${s}">
-        </div>
-    `).join('');
+    seatDetails.innerHTML = selectedSeats.map(function (s) {
+        return (
+            '<div>' +
+            '<strong>Your Selected Seat Number: ' + s + '</strong><br>' +
+            '<input type="text" placeholder="Name" id="name-' + s + '">' +
+            '<input type="text" placeholder="Phone number" id="mobile-' + s + '">' +
+            '</div>'
+        );
+    }).join('');
 }
 
-document.getElementById('submit-btn').addEventListener('click', async () => {
+document.getElementById('submit-btn').addEventListener('click', async function () {
     if (selectedSeats.length === 0) {
         alert('Please select at least one seat.');
         return;
     }
 
-    const bookingData = selectedSeats.map(s => ({
-        seat: s,
-        name: document.getElementById(`name-${s}`).value.trim(),
-        mobile: document.getElementById(`mobile-${s}`).value.trim()
-    }));
+    const bookingData = selectedSeats.map(function (s) {
+        return {
+            seat: s,
+            name: (document.getElementById('name-' + s).value || '').trim(),
+            mobile: (document.getElementById('mobile-' + s).value || '').trim()
+        };
+    });
 
-    for (let b of bookingData) {
+    for (let i = 0; i < bookingData.length; i++) {
+        const b = bookingData[i];
         if (!b.name || !b.mobile) {
-            alert(`Please enter Name and Phone for Seat ${b.seat}`);
+            alert('Please enter Name and Phone for Seat ' + b.seat);
             return;
         }
     }
@@ -341,15 +349,17 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                name: bookingData.map(b => b.name).join(', '),
-                mobile: bookingData.map(b => b.mobile).join(', '),
+                name: bookingData.map(function (b) { return b.name; }).join(', '),
+                mobile: bookingData.map(function (b) { return b.mobile; }).join(', '),
                 seats: selectedSeats
             })
         });
 
         const result = await response.json();
         alert(result.message);
-        if (result.ok) location.reload();
+        if (result.ok) {
+            location.reload();
+        }
     } catch (err) {
         console.error('Failed to submit booking:', err);
         alert('Booking failed. Please try again.');
