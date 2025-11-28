@@ -47,24 +47,33 @@ def index():
 @app.route("/submit", methods=["POST"])
 def submit():
     data = request.get_json(force=True) or {}
-    user_code = str(data.get("user_code", "")).strip()
-    name = str(data.get("name", "")).strip()
-    mobile = str(data.get("mobile", "")).strip()
-    seats = data.get("seats", [])
 
-    if not name or not mobile or not seats:
-        return jsonify({"ok": False, "message": "Name, Mobile and at least one seat are required."}), 400
-    if not all(str(s).isdigit() for s in seats):
-        return jsonify({"ok": False, "message": "Seats must be numeric."}), 400
-    if not mobile.isdigit() or len(mobile) < 10:
-        return jsonify({"ok": False, "message": "Invalid mobile number."}), 400
+    # Handle multiple bookings: if data is a list, process all
+    bookings = data if isinstance(data, list) else [data]
+
+    ws = get_sheet()
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     try:
-        ws = get_sheet()
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        seats_str = ", ".join(map(str, seats))
-        ws.append_row([timestamp, user_code, name, mobile, seats_str])
-        return jsonify({"ok": True, "message": "Booking saved."}), 200
+        for booking in bookings:
+            user_code = str(booking.get("user_code", "")).strip()
+            name = str(booking.get("name", "")).strip()
+            mobile = str(booking.get("mobile", "")).strip()
+            seats = booking.get("seats", [])
+
+            # Validation
+            if not name or not mobile or not seats:
+                return jsonify({"ok": False, "message": "Name, Mobile and at least one seat are required."}), 400
+            if not all(str(s).isdigit() for s in seats):
+                return jsonify({"ok": False, "message": "Seats must be numeric."}), 400
+            if not mobile.isdigit() or len(mobile) < 10:
+                return jsonify({"ok": False, "message": "Invalid mobile number."}), 400
+
+            seats_str = ", ".join(map(str, seats))
+            ws.append_row([timestamp, user_code, name, mobile, seats_str])
+
+        return jsonify({"ok": True, "message": f"{len(bookings)} booking(s) saved."}), 200
+
     except Exception as e:
         return jsonify({"ok": False, "message": f"Failed to save: {e}"}), 500
 
