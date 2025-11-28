@@ -89,13 +89,25 @@
     button:hover {
         background-color: #0056b3;
     }
+    /* Blinking effect */
+    .blink-text {
+        color: #dc3545;
+        font-size: 16px;
+        font-weight: bold;
+        animation: blink 1s infinite;
+    }
+    @keyframes blink {
+        0% { opacity: 1; }
+        50% { opacity: 0; }
+        100% { opacity: 1; }
+    }
 </style>
 </head>
 <body>
 
 <div id="registration-section">
     <h1>The Potter's House<br>Live Music Concert</h1>
-    <p style="font-size:16px; color:#dc3545;">Limited Slots for Free Registration</p>
+    <p class="blink-text">Limited Slots for Free Registration</p>
     <p><strong>Event Timing:</strong> November 29th, 2025, at 7:00 PM</p>
     <p><strong>Event Address:</strong><br>
     Potter's House, 3rd Floor, Gachibowli Stadium Road,<br>
