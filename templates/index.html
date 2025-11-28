@@ -7,9 +7,9 @@
 <title>The Potter's House Live Music Concert</title>
 <style>
     :root {
-        --seat-size: 40px;      /* square seat size */
-        --cell-gap: 5px;        /* gap between cells */
-        --gap-border: #bbb;     /* gap box border color */
+        --seat-size: 40px;      /* seat square size */
+        --cell-gap: 5px;        /* regular small gap between seats */
+        --middle-gap: 40px;     /* the space after seat 5 and seat 10 (same as seat size) */
     }
 
     body {
@@ -44,21 +44,22 @@
         background: #fafafa;
     }
 
-    /* One row: 15 seats + 2 gap boxes (after 5 and 10) */
+    /* One row: 15 seats; gaps created by margins (no extra elements) */
     .row {
-        display: grid;
-        grid-template-columns: repeat(17, var(--seat-size)); /* 15 seats + 2 gap boxes */
+        display: flex;
+        flex-direction: row;
         gap: var(--cell-gap);
-        width: max-content;                 /* keep full row width; enables horizontal scroll */
+        flex-wrap: nowrap;             /* keep all seats in one line */
+        width: max-content;            /* ensures full row width for scrolling */
         align-items: center;
-        justify-items: center;
-        margin: 0 auto;                     /* center row inside the container */
+        justify-content: center;
+        margin: 0 auto;
     }
 
     .seat {
         width: var(--seat-size);
         height: var(--seat-size);
-        display: flex;
+        display: inline-flex;
         align-items: center;
         justify-content: center;
         font-size: 14px;
@@ -83,21 +84,10 @@
         cursor: not-allowed;
     }
 
-    /* Gap boxes (non-clickable, similar size to seats) */
-    .gap-box {
-        width: var(--seat-size);
-        height: var(--seat-size);
-        border: 2px dashed var(--gap-border);
-        border-radius: 5px;
-        background: transparent;
-        pointer-events: none; /* not interactive */
-        box-sizing: border-box;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #888;
-        font-size: 11px; /* label size, if you want text */
-    }
+    /* === Insert the larger space after seat positions 5 and 10 in EACH row === */
+    /* We render exactly 15 seats per row, so nth-child counts per row are consistent */
+    .row .seat:nth-child(5) { margin-right: var(--middle-gap); }  /* gap between 5 and 6 */
+    .row .seat:nth-child(10) { margin-right: var(--middle-gap); } /* gap between 10 and 11 */
 
     #selected-info {
         max-width: 500px;
@@ -134,11 +124,12 @@
         0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; }
     }
 
-    /* Slightly shrink seats on very small screens (still scrollable) */
+    /* Optional: slightly shrink seats on very small screens (still scrollable). */
     @media (max-width: 480px) {
         :root {
             --seat-size: 34px;
             --cell-gap: 4px;
+            --middle-gap: 34px; /* keep gap equal to seat size */
         }
         .seat { font-size: 12px; }
         #selected-info { max-width: 95%; padding: 12px; }
@@ -170,8 +161,8 @@
 </div>
 
 <script>
-const seatCount = 200;   // Total seats
-const seatsPerRow = 15;  // Seats per row (with two gap boxes per row)
+const seatCount = 210;   // Total seats (updated from 200 to 210)
+const seatsPerRow = 15;  // 15 seats per row (visual gaps after 5 and 10)
 let selectedSeats = [];
 
 async function loadSeats() {
@@ -187,16 +178,15 @@ async function loadSeats() {
         console.warn('Booked seats fetch failed, rendering all as available.');
     }
 
-    // Render rows. Each row has: 5 seats, gap box, 5 seats, gap box, 5 seats
+    // Render rows. Each row: 15 seat elements; gaps created by CSS nth-child margins.
     let seatNumber = 1;
-    const totalRows = Math.ceil(seatCount / seatsPerRow);
+    const totalRows = Math.ceil(seatCount / seatsPerRow); // 210 => 14 rows
 
     for (let row = 1; row <= totalRows; row++) {
         const rowDiv = document.createElement('div');
         rowDiv.className = 'row';
 
         for (let i = 1; i <= seatsPerRow && seatNumber <= seatCount; i++) {
-            // Append seat
             const seat = document.createElement('div');
             seat.classList.add('seat');
             seat.textContent = String(seatNumber);
@@ -210,19 +200,7 @@ async function loadSeats() {
 
             rowDiv.appendChild(seat);
             seatNumber++;
-
-            // Insert gap box after seat positions 5 and 10
-            if (i === 5 || i === 10) {
-                const gap = document.createElement('div');
-                gap.className = 'gap-box';
-                // Optional label. Uncomment if you want text inside the box:
-                // gap.textContent = 'AISLE';
-                rowDiv.appendChild(gap);
-            }
         }
-
-        // If the row has fewer than 15 seats (last row), still show the two gap boxes in the correct places
-        // The above logic already inserts gap boxes after 5 and 10 seat positions even in a partial row
 
         seatContainer.appendChild(rowDiv);
     }
