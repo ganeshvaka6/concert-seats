@@ -85,7 +85,6 @@
     }
 
     /* === Insert the larger space after seat positions 5 and 10 in EACH row === */
-    /* We render exactly 15 seats per row, so nth-child counts per row are consistent */
     .row .seat:nth-child(5) { margin-right: var(--middle-gap); }  /* gap between 5 and 6 */
     .row .seat:nth-child(10) { margin-right: var(--middle-gap); } /* gap between 10 and 11 */
 
@@ -161,7 +160,7 @@
 </div>
 
 <script>
-const seatCount = 210;   // Total seats (updated from 200 to 210)
+const seatCount = 210;   // Total seats
 const seatsPerRow = 15;  // 15 seats per row (visual gaps after 5 and 10)
 let selectedSeats = [];
 
@@ -191,11 +190,14 @@ async function loadSeats() {
             seat.classList.add('seat');
             seat.textContent = String(seatNumber);
 
+            // Store the seat number on the element to avoid closure issues
+            seat.dataset.seat = String(seatNumber);
+
             if (bookedSeats.includes(seatNumber)) {
                 seat.classList.add('booked');
             } else {
                 seat.classList.add('available');
-                seat.addEventListener('click', () => toggleSeat(seat, seatNumber));
+                seat.addEventListener('click', onSeatClick);
             }
 
             rowDiv.appendChild(seat);
@@ -204,6 +206,15 @@ async function loadSeats() {
 
         seatContainer.appendChild(rowDiv);
     }
+}
+
+// Click handler reads the seat number from the element itself (stable per element)
+function onSeatClick(event) {
+    // In case inner content is clicked, ensure we target the .seat element
+    const seat = event.currentTarget; // always the element the listener was attached to
+    const seatNumber = parseInt(seat.dataset.seat, 10);
+
+    toggleSeat(seat, seatNumber);
 }
 
 function toggleSeat(seat, seatNumber) {
