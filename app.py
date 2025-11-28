@@ -44,6 +44,15 @@ def clear_google_sheet_values():
 def index():
     return render_template("index.html", seat_count=200)
 
+# Helper to normalize seats input
+def normalize_seats(seats):
+    if isinstance(seats, list):
+        return [int(s) for s in seats if str(s).isdigit()]
+    elif isinstance(seats, str):
+        return [int(s.strip()) for s in seats.split(",") if s.strip().isdigit()]
+    else:
+        return []
+
 @app.route("/submit", methods=["POST"])
 def submit():
     data = request.get_json(force=True) or {}
@@ -64,7 +73,7 @@ def submit():
             user_code = str(booking.get("user_code", "")).strip()
             name = str(booking.get("name", "")).strip()
             mobile = str(booking.get("mobile", "")).strip()
-            seats = booking.get("seats", [])
+            seats = normalize_seats(booking.get("seats", []))
 
             # Normalize mobile number: remove spaces, +, and hyphens
             mobile = mobile.replace(" ", "").replace("-", "").replace("+", "")
@@ -72,8 +81,6 @@ def submit():
             # Validation
             if not name or not mobile or not seats:
                 return jsonify({"ok": False, "message": "Name, Mobile and at least one seat are required."}), 400
-            if not all(str(s).isdigit() for s in seats):
-                return jsonify({"ok": False, "message": "Seats must be numeric."}), 400
             if not mobile.isdigit() or len(mobile) < 10:
                 return jsonify({"ok": False, "message": "Invalid mobile number."}), 400
 
