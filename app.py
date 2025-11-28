@@ -48,8 +48,13 @@ def index():
 def submit():
     data = request.get_json(force=True) or {}
 
-    # Handle multiple bookings: if data is a list, process all
-    bookings = data if isinstance(data, list) else [data]
+    # Support both formats: array or object with 'users' key
+    if isinstance(data, list):
+        bookings = data
+    elif isinstance(data, dict) and "users" in data:
+        bookings = data["users"]
+    else:
+        bookings = [data]  # Single booking fallback
 
     ws = get_sheet()
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -60,6 +65,9 @@ def submit():
             name = str(booking.get("name", "")).strip()
             mobile = str(booking.get("mobile", "")).strip()
             seats = booking.get("seats", [])
+
+            # Normalize mobile number: remove spaces, +, and hyphens
+            mobile = mobile.replace(" ", "").replace("-", "").replace("+", "")
 
             # Validation
             if not name or not mobile or not seats:
