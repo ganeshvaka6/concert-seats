@@ -24,16 +24,36 @@
         border-radius: 8px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
+
+    /* Container: stack rows vertically; each row manages its own grid */
     #seat-container {
-        display: grid;
-        grid-template-columns: repeat(20, 40px);
-        gap: 5px;
+        display: flex;               /* stack rows */
+        flex-direction: column;
+        gap: 10px;
         justify-content: center;
+        align-items: center;
         margin-top: 20px;
-        overflow-x: auto;
+        overflow-x: auto;            /* allow horizontal scroll if a row is wider */
         -webkit-overflow-scrolling: touch;
         padding-bottom: 8px;
     }
+
+    /* ONE ROW = 15 seats with 2 blank spaces (no boxes) after seat 5 and seat 10 */
+    .row {
+        display: grid;
+        /* 15 seat cells + 2 gap cells (pure space, no element needed) */
+        grid-template-columns:
+            repeat(5, 40px)  /* seats 1..5 */
+            60px             /* space between 5 and 6 */
+            repeat(5, 40px)  /* seats 6..10 */
+            60px             /* space between 10 and 11 */
+            repeat(5, 40px); /* seats 11..15 */
+        gap: 5px;
+        width: max-content;  /* prevent clipping on mobile */
+        align-items: center;
+        justify-items: center;
+    }
+
     .seat {
         width: 40px;
         height: 40px;
@@ -45,6 +65,7 @@
         cursor: pointer;
         color: black;
         box-sizing: border-box;
+        user-select: none;
     }
     .available {
         background-color: white;
@@ -60,6 +81,7 @@
         color: white;
         cursor: not-allowed;
     }
+
     #selected-info {
         max-width: 500px;
         margin: 20px auto;
@@ -97,20 +119,13 @@
         100% { opacity: 1; }
     }
 
-    /* Row layout with gaps after 5 and 10 */
-    .row {
-        display: grid;
-        grid-template-columns: repeat(5, 40px) 60px repeat(5, 40px) 60px repeat(5, 40px);
-        gap: 5px;
-        margin-bottom: 10px;
-        justify-content: center;
-        width: max-content;
-    }
-
-    /* Responsive adjustments */
+    /* Responsive: shrink seats and spaces on smaller screens */
     @media (max-width: 768px) {
         .row {
-            grid-template-columns: repeat(5, 36px) 50px repeat(5, 36px) 50px repeat(5, 36px);
+            grid-template-columns:
+                repeat(5, 36px) 50px
+                repeat(5, 36px) 50px
+                repeat(5, 36px);
             gap: 4px;
         }
         .seat {
@@ -121,7 +136,10 @@
     }
     @media (max-width: 480px) {
         .row {
-            grid-template-columns: repeat(5, 32px) 40px repeat(5, 32px) 40px repeat(5, 32px);
+            grid-template-columns:
+                repeat(5, 32px) 40px
+                repeat(5, 32px) 40px
+                repeat(5, 32px);
             gap: 3px;
         }
         .seat {
@@ -163,36 +181,49 @@
 </div>
 
 <script>
-const seatCount = 200;
+const seatCount = 200;      // total seats
+const seatsPerRow = 15;     // 15 seats per row (with two spaces visually)
 let selectedSeats = [];
-const seatsPerRow = 15;
 
 async function loadSeats() {
     const seatContainer = document.getElementById('seat-container');
-    const response = await fetch('/booked-seats');
-    const data = await response.json();
-    const bookedSeats = data.booked || [];
 
+    // fetch booked seats from server
+    let bookedSeats = [];
+    try {
+        const response = await fetch('/booked-seats');
+        const data = await response.json();
+        bookedSeats = Array.isArray(data.booked) ? data.booked : [];
+    } catch (e) {
+        console.warn('Booked seats fetch failed, rendering all as available.');
+    }
+
+    // render rows: each row has 15 seats, with visual spaces between 5-6 and 10-11
     let seatNumber = 1;
     const totalRows = Math.ceil(seatCount / seatsPerRow);
 
-    for (let row = 1; row <= totalRows; row++) {
+    for (let r = 0; r < totalRows; r++) {
         const rowDiv = document.createElement('div');
         rowDiv.className = 'row';
 
+        // We append 15 seat elements; the "spaces" are defined by the row's grid columns,
+        // so we DO NOT insert any extra elements (no empty boxes).
         for (let i = 1; i <= seatsPerRow && seatNumber <= seatCount; i++) {
-            const seat = document.createElement('div');
-            seat.classList.add('seat');
-            seat.textContent = seatNumber;
+            const seatEl = document.createElement('div');
+            seatEl.classList.add('seat');
 
+            // label seat number
+            seatEl.textContent = String(seatNumber);
+
+            // mark as booked/available and add click handler
             if (bookedSeats.includes(seatNumber)) {
-                seat.classList.add('booked');
+                seatEl.classList.add('booked');
             } else {
-                seat.classList.add('available');
-                seat.addEventListener('click', () => toggleSeat(seat, seatNumber));
+                seatEl.classList.add('available');
+                seatEl.addEventListener('click', () => toggleSeat(seatEl, seatNumber));
             }
 
-            rowDiv.appendChild(seat);
+            rowDiv.appendChild(seatEl);
             seatNumber++;
         }
 
@@ -200,15 +231,15 @@ async function loadSeats() {
     }
 }
 
-function toggleSeat(seat, seatNumber) {
+function toggleSeat(seatEl, seatNumber) {
     if (selectedSeats.includes(seatNumber)) {
         selectedSeats = selectedSeats.filter(s => s !== seatNumber);
-        seat.classList.remove('selected');
-        seat.classList.add('available');
+        seatEl.classList.remove('selected');
+        seatEl.classList.add('available');
     } else {
         selectedSeats.push(seatNumber);
-        seat.classList.remove('available');
-        seat.classList.add('selected');
+        seatEl.classList.remove('available');
+        seatEl.classList.add('selected');
     }
     updateSelectedInfo();
 }
@@ -229,33 +260,34 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
         alert('Please select at least one seat.');
         return;
     }
-
     const bookingData = selectedSeats.map(s => ({
         seat: s,
-        name: document.getElementById(`name-${s}`).value.trim(),
-        mobile: document.getElementById(`mobile-${s}`).value.trim()
+        name: (document.getElementById(`name-${s}`).value || '').trim(),
+        mobile: (document.getElementById(`mobile-${s}`).value || '').trim()
     }));
-
-    for (let b of bookingData) {
+    for (const b of bookingData) {
         if (!b.name || !b.mobile) {
             alert(`Please enter Name and Phone for Seat ${b.seat}`);
             return;
         }
     }
-
-    const response = await fetch('/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            name: bookingData.map(b => b.name).join(', '),
-            mobile: bookingData.map(b => b.mobile).join(', '),
-            seats: selectedSeats
-        })
-    });
-
-    const result = await response.json();
-    alert(result.message);
-    if (result.ok) location.reload();
+    try {
+        const response = await fetch('/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: bookingData.map(b => b.name).join(', '),
+                mobile: bookingData.map(b => b.mobile).join(', '),
+                seats: selectedSeats
+            })
+        });
+        const result = await response.json();
+        alert(result.message);
+        if (result.ok) location.reload();
+    } catch (e) {
+        console.error('Submit failed:', e);
+        alert('Booking failed. Please try again.');
+    }
 });
 
 window.onload = loadSeats;
