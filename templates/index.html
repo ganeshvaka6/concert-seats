@@ -21,10 +21,21 @@
         font-size: 16px;
         color: #444;
     }
+    #registration-section {
+        text-align: center;
+        margin: 20px auto;
+        max-width: 800px;
+        background: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
     #seat-container {
         display: grid;
         grid-template-columns: repeat(20, 40px);
-       -bottom: 20px;
+        gap: 5px;
+        justify-content: center;
+        margin-top: 20px;
     }
     .seat {
         width: 40px;
@@ -53,7 +64,7 @@
     }
     #selected-info {
         max-width: 500px;
-        margin: auto;
+        margin: 20px auto;
         background: #fff;
         padding: 15px;
         border-radius: 8px;
@@ -81,24 +92,20 @@
 </style>
 </head>
 <body>
-<h1>
-    The Potter's House<br>
-    Live Music Concert<br>
-    <span style="font-size:16px; color:#dc3545;">Limited Slots for Free Registration</span>
-</h1>
-<div class="event-details">
+
+<div id="registration-section">
+    <h1>The Potter's House<br>Live Music Concert</h1>
+    <p style="font-size:16px; color:#dc3545;">Limited Slots for Free Registration</p>
     <p><strong>Event Timing:</strong> November 29th, 2025, at 7:00 PM</p>
     <p><strong>Event Address:</strong><br>
     Potter's House, 3rd Floor, Gachibowli Stadium Road,<br>
     above Westside, next to Himagiri Hospital,<br>
     Rajeev Gandhi Nagar, Indira Nagar,<br>
     Gachibowli, Hyderabad, Telangana 500032</p>
+    <div style="font-size:18px; color:#007bff; margin:15px 0;">Register here:</div>
+
+    <div id="seat-container"></div>
 </div>
-
-<!-- Added Register here above seat table -->
-<div style="text-align:center; font-size:18px; color:#007bff; margin-bottom:10px;">Register here:</div>
-
-<div id="seat-container"></div>
 
 <div id="selected-info">
     <h3>Selected Seats</h3>
