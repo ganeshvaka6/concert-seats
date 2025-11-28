@@ -2,61 +2,68 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>The Potter's House Live Music Concert</title>
 <style>
+    /* You can tweak these to change sizes or gap widths globally */
+    :root {
+        --seat-size: 40px;      /* square seat size */
+        --cell-gap: 5px;        /* gap between seat cells */
+        --middle-gap: 60px;     /* the blank space between 5-6 and 10-11 */
+    }
+
     body {
         font-family: Arial, sans-serif;
         margin: 20px;
         background-color: #f8f9fa;
     }
-    h1 {
-        text-align: center;
-        color: #333;
-    }
+    h1 { text-align: center; color: #333; }
+
     #registration-section {
         text-align: center;
         margin: 20px auto;
-        max-width: 800px;
+        max-width: 900px;
         background: #fff;
         padding: 20px;
         border-radius: 8px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
 
-    /* Container: stack rows vertically; each row manages its own grid */
+    /* === Seat window: vertical stack of rows, horizontally scrollable === */
     #seat-container {
-        display: flex;               /* stack rows */
+        display: flex;                 /* stack rows vertically */
         flex-direction: column;
         gap: 10px;
-        justify-content: center;
-        align-items: center;
-        margin-top: 20px;
-        overflow-x: auto;            /* allow horizontal scroll if a row is wider */
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;              /* horizontal scroll for the entire table */
         -webkit-overflow-scrolling: touch;
-        padding-bottom: 8px;
+        padding-bottom: 8px;           /* space for scrollbar on mobile */
+        border: 1px solid #ddd;        /* optional visual boundary */
+        border-radius: 6px;
+        background: #fafafa;
     }
 
-    /* ONE ROW = 15 seats with 2 blank spaces (no boxes) after seat 5 and seat 10 */
+    /* One row: 15 seats with 2 blank spacers (no elements, just grid columns) */
     .row {
         display: grid;
-        /* 15 seat cells + 2 gap cells (pure space, no element needed) */
         grid-template-columns:
-            repeat(5, 40px)  /* seats 1..5 */
-            60px             /* space between 5 and 6 */
-            repeat(5, 40px)  /* seats 6..10 */
-            60px             /* space between 10 and 11 */
-            repeat(5, 40px); /* seats 11..15 */
-        gap: 5px;
-        width: max-content;  /* prevent clipping on mobile */
+            repeat(5, var(--seat-size))     /* seats 1..5 */
+            var(--middle-gap)               /* space between 5 and 6 */
+            repeat(5, var(--seat-size))     /* seats 6..10 */
+            var(--middle-gap)               /* space between 10 and 11 */
+            repeat(5, var(--seat-size));    /* seats 11..15 */
+        gap: var(--cell-gap);
+        width: max-content;                 /* keep full row width; enables horizontal scroll */
         align-items: center;
         justify-items: center;
+        margin: 0 auto;                     /* center row inside the container */
     }
 
     .seat {
-        width: 40px;
-        height: 40px;
+        width: var(--seat-size);
+        height: var(--seat-size);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -90,6 +97,7 @@
         border-radius: 8px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
+    #selected-info div { margin-bottom: 10px; }
     input[type="text"] {
         width: 45%;
         padding: 5px;
@@ -104,9 +112,8 @@
         border-radius: 5px;
         cursor: pointer;
     }
-    button:hover {
-        background-color: #0056b3;
-    }
+    button:hover { background-color: #0056b3; }
+
     .blink-text {
         color: #dc3545;
         font-size: 16px;
@@ -114,47 +121,19 @@
         animation: blink 1s infinite;
     }
     @keyframes blink {
-        0% { opacity: 1; }
-        50% { opacity: 0; }
-        100% { opacity: 1; }
+        0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; }
     }
 
-    /* Responsive: shrink seats and spaces on smaller screens */
-    @media (max-width: 768px) {
-        .row {
-            grid-template-columns:
-                repeat(5, 36px) 50px
-                repeat(5, 36px) 50px
-                repeat(5, 36px);
-            gap: 4px;
-        }
-        .seat {
-            width: 36px;
-            height: 36px;
-            font-size: 13px;
-        }
-    }
+    /* Optional: slightly shrink seats on very small screens (still scrollable). */
     @media (max-width: 480px) {
-        .row {
-            grid-template-columns:
-                repeat(5, 32px) 40px
-                repeat(5, 32px) 40px
-                repeat(5, 32px);
-            gap: 3px;
+        :root {
+            --seat-size: 34px;
+            --middle-gap: 50px;
+            --cell-gap: 4px;
         }
-        .seat {
-            width: 32px;
-            height: 32px;
-            font-size: 12px;
-        }
-        #selected-info {
-            max-width: 95%;
-            padding: 12px;
-        }
-        input[type="text"] {
-            width: 100%;
-            margin: 6px 0;
-        }
+        .seat { font-size: 12px; }
+        #selected-info { max-width: 95%; padding: 12px; }
+        input[type="text"] { width: 100%; margin: 6px 0; }
     }
 </style>
 </head>
@@ -165,10 +144,11 @@
     <p class="blink-text">Limited Slots for Free Registration</p>
     <p><strong>Event Timing:</strong> November 29th, 2025, at 7:00 PM</p>
     <p><strong>Event Address:</strong><br>
-    Potter's House, 3rd Floor, Gachibowli Stadium Road,<br>
-    above Westside, next to Himagiri Hospital,<br>
-    Rajeev Gandhi Nagar, Indira Nagar,<br>
-    Gachibowli, Hyderabad, Telangana 500032</p>
+        Potter's House, 3rd Floor, Gachibowli Stadium Road,<br>
+        above Westside, next to Himagiri Hospital,<br>
+        Rajeev Gandhi Nagar, Indira Nagar,<br>
+        Gachibowli, Hyderabad, Telangana 500032
+    </p>
     <div style="font-size:18px; color:#007bff; margin:15px 0;">Register here:</div>
 
     <div id="seat-container"></div>
@@ -181,14 +161,14 @@
 </div>
 
 <script>
-const seatCount = 200;      // total seats
-const seatsPerRow = 15;     // 15 seats per row (with two spaces visually)
+const seatCount = 200;   // Total seats
+const seatsPerRow = 15;  // 15 seats per row (with spaces after 5 and 10)
 let selectedSeats = [];
 
 async function loadSeats() {
     const seatContainer = document.getElementById('seat-container');
 
-    // fetch booked seats from server
+    // Fetch booked seats from server
     let bookedSeats = [];
     try {
         const response = await fetch('/booked-seats');
@@ -198,32 +178,27 @@ async function loadSeats() {
         console.warn('Booked seats fetch failed, rendering all as available.');
     }
 
-    // render rows: each row has 15 seats, with visual spaces between 5-6 and 10-11
+    // Render rows. Each row: 15 seat elements; the spaces are created by CSS columns (no extra elements).
     let seatNumber = 1;
     const totalRows = Math.ceil(seatCount / seatsPerRow);
 
-    for (let r = 0; r < totalRows; r++) {
+    for (let row = 1; row <= totalRows; row++) {
         const rowDiv = document.createElement('div');
         rowDiv.className = 'row';
 
-        // We append 15 seat elements; the "spaces" are defined by the row's grid columns,
-        // so we DO NOT insert any extra elements (no empty boxes).
         for (let i = 1; i <= seatsPerRow && seatNumber <= seatCount; i++) {
-            const seatEl = document.createElement('div');
-            seatEl.classList.add('seat');
+            const seat = document.createElement('div');
+            seat.classList.add('seat');
+            seat.textContent = String(seatNumber);
 
-            // label seat number
-            seatEl.textContent = String(seatNumber);
-
-            // mark as booked/available and add click handler
             if (bookedSeats.includes(seatNumber)) {
-                seatEl.classList.add('booked');
+                seat.classList.add('booked');
             } else {
-                seatEl.classList.add('available');
-                seatEl.addEventListener('click', () => toggleSeat(seatEl, seatNumber));
+                seat.classList.add('available');
+                seat.addEventListener('click', () => toggleSeat(seat, seatNumber));
             }
 
-            rowDiv.appendChild(seatEl);
+            rowDiv.appendChild(seat);
             seatNumber++;
         }
 
@@ -231,15 +206,15 @@ async function loadSeats() {
     }
 }
 
-function toggleSeat(seatEl, seatNumber) {
+function toggleSeat(seat, seatNumber) {
     if (selectedSeats.includes(seatNumber)) {
         selectedSeats = selectedSeats.filter(s => s !== seatNumber);
-        seatEl.classList.remove('selected');
-        seatEl.classList.add('available');
+        seat.classList.remove('selected');
+        seat.classList.add('available');
     } else {
         selectedSeats.push(seatNumber);
-        seatEl.classList.remove('available');
-        seatEl.classList.add('selected');
+        seat.classList.remove('available');
+        seat.classList.add('selected');
     }
     updateSelectedInfo();
 }
@@ -260,17 +235,20 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
         alert('Please select at least one seat.');
         return;
     }
+
     const bookingData = selectedSeats.map(s => ({
         seat: s,
         name: (document.getElementById(`name-${s}`).value || '').trim(),
         mobile: (document.getElementById(`mobile-${s}`).value || '').trim()
     }));
+
     for (const b of bookingData) {
         if (!b.name || !b.mobile) {
             alert(`Please enter Name and Phone for Seat ${b.seat}`);
             return;
         }
     }
+
     try {
         const response = await fetch('/submit', {
             method: 'POST',
@@ -281,6 +259,7 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
                 seats: selectedSeats
             })
         });
+
         const result = await response.json();
         alert(result.message);
         if (result.ok) location.reload();
