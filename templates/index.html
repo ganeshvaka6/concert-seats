@@ -30,13 +30,21 @@
         border-radius: 8px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
+
+    /* Your original seat-container grid stays; we'll render rows inside it */
     #seat-container {
         display: grid;
         grid-template-columns: repeat(20, 40px);
         gap: 5px;
         justify-content: center;
         margin-top: 20px;
+
+        /* Mobile-friendly: allow horizontal scroll if grid is wider than viewport */
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 8px; /* space for scrollbar on mobile */
     }
+
     .seat {
         width: 40px;
         height: 40px;
@@ -47,6 +55,8 @@
         border-radius: 5px;
         cursor: pointer;
         color: black;
+        user-select: none;
+        box-sizing: border-box; /* ensure borders don’t expand size */
     }
     .available {
         background-color: white;
@@ -77,6 +87,7 @@
         width: 45%;
         padding: 5px;
         margin: 5px;
+        box-sizing: border-box;
     }
     button {
         background-color: #007bff;
@@ -100,6 +111,86 @@
         0% { opacity: 1; }
         50% { opacity: 0; }
         100% { opacity: 1; }
+    }
+
+    /* ===== Added: Row and Aisle styles to create gaps after 5 and 10 ===== */
+    .row {
+        display: grid;
+        grid-template-columns: repeat(17, 40px); /* 15 seats + 2 aisle spacers */
+        gap: 5px;
+        margin-bottom: 10px;
+        grid-column: 1 / -1;    /* each row spans full width of seat-container grid */
+        justify-content: center;
+        align-items: center;
+        width: max-content;     /* prevent clipping on small screens */
+    }
+    .aisle {
+        width: 40px;
+        height: 40px;
+        pointer-events: none;   /* non-clickable */
+        background: transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+    }
+    .aisle::before {
+        content: "";
+        width: 30px;
+        height: 30px;
+        border: 2px dashed #bbb;
+        border-radius: 4px;
+    }
+
+    /* ===== Responsive adjustments to ensure full visibility on mobile ===== */
+    @media (max-width: 768px) {
+        .row {
+            grid-template-columns: repeat(17, 36px);
+            gap: 4px;
+        }
+        .seat {
+            width: 36px;
+            height: 36px;
+            font-size: 13px;
+        }
+        .aisle {
+            width: 36px;
+            height: 36px;
+        }
+        .aisle::before {
+            width: 26px;
+            height: 26px;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .row {
+            grid-template-columns: repeat(17, 32px);
+            gap: 3px;
+        }
+        .seat {
+            width: 32px;
+            height: 32px;
+            font-size: 12px;
+        }
+        .aisle {
+            width: 32px;
+            height: 32px;
+        }
+        .aisle::before {
+            width: 22px;
+            height: 22px;
+            border-width: 2px;
+        }
+
+        #selected-info {
+            max-width: 95%;
+            padding: 12px;
+        }
+        input[type="text"] {
+            width: 100%;
+            margin: 6px 0;
+        }
     }
 </style>
 </head>
@@ -129,25 +220,76 @@
 const seatCount = 200; // Total seats
 let selectedSeats = [];
 
+/* Added: constants for row pattern */
+const seatsPerRow = 15;           // seats per row (excluding aisles)
+const aislePositions = [5, 10];   // insert aisle AFTER these seat indexes in each row
+
 async function loadSeats() {
     const seatContainer = document.getElementById('seat-container');
-    const response = await fetch('/booked-seats');
-    const data = await response.json();
-    const bookedSeats = data.booked || [];
 
-    for (let i = 1; i <= seatCount; i++) {
-        const seat = document.createElement('div');
-        seat.classList.add('seat');
-        seat.textContent = i;
+    // Fetch booked seats from server
+    try {
+        const response = await fetch('/booked-seats');
+        const data = await response.json();
+        const bookedSeats = data.booked || [];
 
-        if (bookedSeats.includes(i)) {
-            seat.classList.add('booked');
-        } else {
-            seat.classList.add('available');
-            seat.addEventListener('click', () => toggleSeat(seat, i));
+        // Render rows with aisles between 5-6 and 10-11
+        let seatNumber = 1;
+        const totalRows = Math.ceil(seatCount / seatsPerRow);
+
+        for (let row = 1; row <= totalRows; row++) {
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'row';
+
+            for (let i = 1; i <= seatsPerRow && seatNumber <= seatCount; i++) {
+                const seat = document.createElement('div');
+                seat.classList.add('seat');
+                seat.textContent = seatNumber;
+
+                if (bookedSeats.includes(seatNumber)) {
+                    seat.classList.add('booked');
+                } else {
+                    seat.classList.add('available');
+                    seat.addEventListener('click', () => toggleSeat(seat, seatNumber));
+                }
+
+                rowDiv.appendChild(seat);
+
+                // Insert aisle after seat positions 5 and 10
+                if (aislePositions.includes(i)) {
+                    const aisle = document.createElement('div');
+                    aisle.className = 'aisle';
+                    rowDiv.appendChild(aisle);
+                }
+
+                seatNumber++;
+            }
+
+            seatContainer.appendChild(rowDiv);
         }
-
-        seatContainer.appendChild(seat);
+    } catch (err) {
+        console.error('Failed to load booked seats:', err);
+        // Fallback: render without booked state if endpoint fails
+        let seatNumber = 1;
+        const totalRows = Math.ceil(seatCount / seatsPerRow);
+        for (let row = 1; row <= totalRows; row++) {
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'row';
+            for (let i = 1; i <= seatsPerRow && seatNumber <= seatCount; i++) {
+                const seat = document.createElement('div');
+                seat.classList.add('seat', 'available');
+                seat.textContent = seatNumber;
+                seat.addEventListener('click', () => toggleSeat(seat, seatNumber));
+                rowDiv.appendChild(seat);
+                if (aislePositions.includes(i)) {
+                    const aisle = document.createElement('div');
+                    aisle.className = 'aisle';
+                    rowDiv.appendChild(aisle);
+                }
+                seatNumber++;
+            }
+            seatContainer.appendChild(rowDiv);
+        }
     }
 }
 
@@ -183,8 +325,8 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
 
     const bookingData = selectedSeats.map(s => ({
         seat: s,
-        name: document.getElementById(`name-${s}`).value,
-        mobile: document.getElementById(`mobile-${s}`).value
+        name: document.getElementById(`name-${s}`).value.trim(),
+        mobile: document.getElementById(`mobile-${s}`).value.trim()
     }));
 
     for (let b of bookingData) {
@@ -194,19 +336,24 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
         }
     }
 
-    const response = await fetch('/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            name: bookingData.map(b => b.name).join(', '),
-            mobile: bookingData.map(b => b.mobile).join(', '),
-            seats: selectedSeats
-        })
-    });
+    try {
+        const response = await fetch('/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: bookingData.map(b => b.name).join(', '),
+                mobile: bookingData.map(b => b.mobile).join(', '),
+                seats: selectedSeats
+            })
+        });
 
-    const result = await response.json();
-    alert(result.message);
-    if (result.ok) location.reload();
+        const result = await response.json();
+        alert(result.message);
+        if (result.ok) location.reload();
+    } catch (err) {
+        console.error('Failed to submit booking:', err);
+        alert('Booking failed. Please try again.');
+    }
 });
 
 window.onload = loadSeats;
