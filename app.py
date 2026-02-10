@@ -8,6 +8,26 @@ from google.oauth2.service_account import Credentials
 import qrcode
 from io import BytesIO
 
+from twilio.rest import Client
+TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+
+twilio_client = Client(TWILIO_SID, TWILIO_AUTH)
+
+def send_whatsapp_message(to_number: str, message: str):
+    """Send WhatsApp confirmation through Twilio."""
+    try:
+        twilio_client.messages.create(
+            from_=TWILIO_WHATSAPP_FROM,
+            to=f"whatsapp:+91{to_number}",
+            body=message
+        )
+    except Exception as e:
+        print("WhatsApp send error:", e)
+
+# -----------------------------------------------------------------------
+
 # Environment variables
 GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "ConcertBookings")
 GOOGLE_SHEET_KEY = os.getenv("GOOGLE_SHEET_KEY")
@@ -46,11 +66,9 @@ def clear_google_sheet_values():
 # ---------- Helpers ----------
 
 def extract_ints_from_string(s: str):
-    """Extract all integer numbers from a string."""
     return [int(x) for x in re.findall(r"\d+", s or "")]
 
 def normalize_seats(seats):
-    """Normalize seats input into an ordered list of integers."""
     result = []
     if isinstance(seats, list):
         for item in seats:
@@ -63,7 +81,6 @@ def normalize_seats(seats):
     return result
 
 def normalize_mobile_to_list(mobile):
-    """Normalize mobile(s) to a list of digit-only strings."""
     def only_digits(s):
         return "".join(re.findall(r"\d+", s or ""))
 
@@ -77,7 +94,6 @@ def normalize_mobile_to_list(mobile):
     return [m for m in out if m]
 
 def normalize_names_to_list(name):
-    """Normalize name(s) to a list."""
     if isinstance(name, list):
         return [str(n).strip() for n in name if str(n).strip()]
     elif isinstance(name, str):
@@ -87,7 +103,6 @@ def normalize_names_to_list(name):
         return []
 
 def pair_rows_for_booking(user_code, names_list, mobiles_list, seats_ordered):
-    """Build rows to append to the sheet based on provided lists."""
     rows = []
     n_names = len(names_list)
     n_mobiles = len(mobiles_list)
@@ -117,10 +132,7 @@ def pair_rows_for_booking(user_code, names_list, mobiles_list, seats_ordered):
             rows.append((user_code, names_list[i], mobiles_list[0], seats_ordered[i]))
         return rows
 
-    raise ValueError(
-        "Cannot pair names, mobiles, and seats. "
-        "Ensure either counts all match, or single name+mobile with multiple seats."
-    )
+    raise ValueError("Cannot pair names, mobiles, and seats correctly.")
 
 # ---------- Routes ----------
 
@@ -172,6 +184,14 @@ def submit():
             for (uc, nm, mb, seat) in row_tuples:
                 ws.append_row([timestamp, uc, nm, mb, str(seat)])
                 all_confirmed_seats.append(seat)
+                # ----------------- SEND WHATSAPP MESSAGE (ADDED) -----------------
+                whatsapp_text = (
+                    f"Hello {nm}, your Music Concert seat is confirmed!\n"
+                    f"?? Seat Number: {seat}\n"
+                    "Thank you for registering!"
+                )
+                send_whatsapp_message(mb, whatsapp_text)
+                # -----------------------------------------------------------------
 
         confirmed_seats = ", ".join(map(str, all_confirmed_seats))
         return jsonify({
