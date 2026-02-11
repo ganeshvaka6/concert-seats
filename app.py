@@ -206,7 +206,7 @@ def submit():
                 return jsonify({"ok": False, "message": str(ve)}), 400
 
             # Use a dynamic event time; can be generated or taken from ENV
-            event_time_str = os.getenv("EVENT_TIME_STR", "January 31st, 2026 at 7:00 PM")
+            event_time_str = os.getenv("EVENT_TIME_STR", "February 28th, 2026 at 7:00 PM")
 
             for (uc, nm, mb, seat) in row_tuples:
                 # Save to Google Sheet
