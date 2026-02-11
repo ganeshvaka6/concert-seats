@@ -22,6 +22,16 @@ TWILIO_CONTENT_SID_CONCERT = os.getenv("TWILIO_CONTENT_SID_CONCERT")  # HX...
 twilio_client = Client(TWILIO_SID, TWILIO_AUTH)
 
 
+# =============== FAST DUPLICATE (SERVER-SIDE) ==================
+recent_booking_cache = set()
+
+def is_fast_duplicate(name, mobile, seat):
+    key = f"{name.lower()}-{mobile}-{seat}"
+    if key in recent_booking_cache:
+        return True
+    recent_booking_cache.add(key)
+    return False
+# ===============================================================
 def _format_wa_to(number_str: str) -> str:
     digits = re.sub(r"\D+", "", number_str or "")
 
@@ -112,9 +122,11 @@ def is_duplicate_booking(ws, name, mobile, seat):
     rows = ws.get_all_records()
 
     for row in rows:
-        if (str(row.get("Name", "")).strip().lower() == name.strip().lower() and
+        if (
+            str(row.get("Name", "")).strip().lower() == name.strip().lower() and
             str(row.get("Mobile", "")).strip() == mobile.strip() and
-            str(row.get("Selected Seats", "")).strip() == str(seat)):
+            str(row.get("Selected Seats", "")).strip() == str(seat)
+        ):
             return True
 
     return False
@@ -224,8 +236,11 @@ def submit():
 
             for (uc, nm, mb, seat) in row_tuples:
 
+                if is_fast_duplicate(nm, mb, seat):
+                    print(f"[SKIP] FAST DUPLICATE for {nm} Seat {seat}")
+                    continue
                 if is_duplicate_booking(ws, nm, mb, seat):
-                    print(f"[SKIP] Duplicate booking detected for {nm} Seat {seat}")
+                    print(f"[SKIP] SHEET DUPLICATE for {nm} Seat {seat}")
                     continue
                 # ---------- Replace append_row with batch ----------
                 rows_to_write.append([timestamp, uc, nm, mb, str(seat)])
