@@ -2,8 +2,10 @@
 import os
 import json
 import re
+import threading
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_file
+
 import gspread
 from google.oauth2.service_account import Credentials
 import qrcode
@@ -21,7 +23,6 @@ twilio_client = Client(TWILIO_SID, TWILIO_AUTH)
 
 
 def _format_wa_to(number_str: str) -> str:
-    """Ensure destination number is formatted as whatsapp:+<E.164>"""
     digits = re.sub(r"\D+", "", number_str or "")
 
     if digits.startswith("91") and len(digits) == 12:
@@ -33,14 +34,15 @@ def _format_wa_to(number_str: str) -> str:
         return f"whatsapp:+{digits}"
 
 
+# ---------------- ASYNC WHATSAPP SENDING FIX ----------------
+def async_send_whatsapp(number, name, seat, event_time):
+    threading.Thread(
+        target=send_whatsapp_template_concert,
+        args=(number, name, seat, event_time)
+    ).start()
+
+
 def send_whatsapp_template_concert(to_number: str, name: str, seat: int, event_time: str):
-    """
-    Sends WhatsApp Content Template (Production correct)
-    Variables:
-        {{1}} -> name
-        {{2}} -> seat
-        {{3}} -> event_time
-    """
 
     if not (TWILIO_SID and TWILIO_AUTH and TWILIO_WHATSAPP_FROM and TWILIO_CONTENT_SID_CONCERT):
         print("[ERROR] Missing Twilio credentials or Content SID")
@@ -195,6 +197,7 @@ def submit():
 
     try:
         all_confirmed = []
+        rows_to_write = []  # ---------- BATCH WRITING FIX ----------
 
         for booking in bookings:
             user_code = str(booking.get("user_code", "")).strip()
@@ -213,16 +216,21 @@ def submit():
             event_time = os.getenv("EVENT_TIME_STR", "January 31st, 2026 at 7:00 PM")
 
             for (uc, nm, mb, seat) in row_tuples:
-                ws.append_row([timestamp, uc, nm, mb, str(seat)])
+
+                # ---------- Replace append_row with batch ----------
+                rows_to_write.append([timestamp, uc, nm, mb, str(seat)])
                 all_confirmed.append(seat)
 
-                send_whatsapp_template_concert(mb, nm, seat, event_time)
+                # ---------- ASYNC WHATSAPP FIX ----------
+                async_send_whatsapp(mb, nm, seat, event_time)
+
+        ws.append_rows(rows_to_write)  # ---- SINGLE FAST WRITE -----
 
         final = ", ".join(map(str, all_confirmed))
         return jsonify({
             "ok": True,
             "message": f"Thank you for registering! Seat(s) {final} confirmed."
-        }), 310
+        }), 200  # FIXED (correct HTTP success)
 
     except Exception as e:
         return jsonify({"ok": False, "message": f"Failed: {e}"}), 500
