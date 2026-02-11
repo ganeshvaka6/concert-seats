@@ -29,27 +29,21 @@ def _format_wa_to(number_str: str) -> str:
     elif len(digits) == 10:
         return f"whatsapp:+91{digits}"
     else:
-        print(f"[WARN] Unexpected mobile format input: {number_str} -> {digits}")
+        print(f"[WARN] Unexpected mobile format: {number_str} -> {digits}")
         return f"whatsapp:+{digits}"
 
 
 def send_whatsapp_template_concert(to_number: str, name: str, seat: int, event_time: str):
     """
-    Sends WhatsApp Content Template (Production Correct)
-    Variables mapping:
-    {{1}} -> name
-    {{2}} -> seat
-    {{3}} -> event_time
+    Sends WhatsApp Content Template (Production correct)
+    Variables:
+        {{1}} -> name
+        {{2}} -> seat
+        {{3}} -> event_time
     """
 
     if not (TWILIO_SID and TWILIO_AUTH and TWILIO_WHATSAPP_FROM and TWILIO_CONTENT_SID_CONCERT):
         print("[ERROR] Missing Twilio credentials or Content SID")
-        print({
-            "TWILIO_SID": bool(TWILIO_SID),
-            "TWILIO_AUTH": bool(TWILIO_AUTH),
-            "TWILIO_WHATSAPP_FROM": TWILIO_WHATSAPP_FROM,
-            "TWILIO_CONTENT_SID_CONCERT": TWILIO_CONTENT_SID_CONCERT,
-        })
         return None
 
     try:
@@ -60,13 +54,13 @@ def send_whatsapp_template_concert(to_number: str, name: str, seat: int, event_t
             "to": to_formatted,
             "content_sid": TWILIO_CONTENT_SID_CONCERT,
             "content_variables": json.dumps({
-                "1": (name or "").strip(),
+                "1": name,
                 "2": str(seat),
-                "3": (event_time or "").strip()
+                "3": event_time
             })
         }
 
-        print("[INFO] Sending WhatsApp Template Payload:", payload)
+        print("[INFO] Sending WA Template:", payload)
 
         msg = twilio_client.messages.create(**payload)
 
