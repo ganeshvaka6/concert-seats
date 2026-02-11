@@ -107,10 +107,17 @@ def get_sheet():
     return ws
 
 
-def clear_google_sheet_values():
-    ws = get_sheet()
-    ws.batch_clear(["A2:ZZZ"])
-    return "Sheet cleared"
+def is_duplicate_booking(ws, name, mobile, seat):
+    """Return True if same booking exists."""
+    rows = ws.get_all_records()
+
+    for row in rows:
+        if (str(row.get("Name", "")).strip().lower() == name.strip().lower() and
+            str(row.get("Mobile", "")).strip() == mobile.strip() and
+            str(row.get("Selected Seats", "")).strip() == str(seat)):
+            return True
+
+    return False
 
 
 # ---------- Helpers ----------
@@ -183,7 +190,7 @@ def pair_rows_for_booking(user_code, names_list, mobiles_list, seats_ordered):
 # ---------- Routes ----------
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html", seat_count=310)
+    return render_template("index.html", seat_count=300)
 
 
 @app.route("/submit", methods=["POST"])
@@ -208,15 +215,18 @@ def submit():
             if not names or not mobiles or not seats:
                 return jsonify({"ok": False, "message": "Name, Mobile, Seat required"}), 400
 
-            invalid = [s for s in seats if s < 1 or s > 310]
+            invalid = [s for s in seats if s < 1 or s > 300]
             if invalid:
                 return jsonify({"ok": False, "message": f"Invalid seats: {invalid}"}), 400
 
             row_tuples = pair_rows_for_booking(user_code, names, mobiles, seats)
-            event_time = os.getenv("EVENT_TIME_STR", "January 31st, 2026 at 7:00 PM")
+            event_time = os.getenv("EVENT_TIME_STR", "February 28th, 2026 at 7:00 PM")
 
             for (uc, nm, mb, seat) in row_tuples:
 
+                if is_duplicate_booking(ws, nm, mb, seat):
+                    print(f"[SKIP] Duplicate booking detected for {nm} Seat {seat}")
+                    continue
                 # ---------- Replace append_row with batch ----------
                 rows_to_write.append([timestamp, uc, nm, mb, str(seat)])
                 all_confirmed.append(seat)
@@ -224,7 +234,8 @@ def submit():
                 # ---------- ASYNC WHATSAPP FIX ----------
                 async_send_whatsapp(mb, nm, seat, event_time)
 
-        ws.append_rows(rows_to_write)  # ---- SINGLE FAST WRITE -----
+        if rows_to_write:
+            ws.append_rows(rows_to_write)
 
         final = ", ".join(map(str, all_confirmed))
         return jsonify({
@@ -262,7 +273,9 @@ def clear_sheet_route():
     if CLEAR_TOKEN and request.headers.get("X-CLEAR-TOKEN") != CLEAR_TOKEN:
         return jsonify({"ok": False, "message": "Unauthorized"}), 401
     try:
-        return jsonify({"ok": True, "message": clear_google_sheet_values()})
+        ws = get_sheet()
+        ws.batch_clear(["A2:ZZZ"])
+        return jsonify({"ok": True, "message": "Sheet cleared"})
     except Exception as e:
         return jsonify({"ok": False, "message": str(e)})
 
