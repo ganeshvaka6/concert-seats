@@ -3,6 +3,7 @@ import os
 import json
 import re
 import threading
+import time
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_file
 
@@ -22,16 +23,6 @@ TWILIO_CONTENT_SID_CONCERT = os.getenv("TWILIO_CONTENT_SID_CONCERT")  # HX...
 twilio_client = Client(TWILIO_SID, TWILIO_AUTH)
 
 
-# =============== FAST DUPLICATE (SERVER-SIDE) ==================
-recent_booking_cache = set()
-
-def is_fast_duplicate(name, mobile, seat):
-    key = f"{name.lower()}-{mobile}-{seat}"
-    if key in recent_booking_cache:
-        return True
-    recent_booking_cache.add(key)
-    return False
-# ===============================================================
 def _format_wa_to(number_str: str) -> str:
     digits = re.sub(r"\D+", "", number_str or "")
 
@@ -48,7 +39,8 @@ def _format_wa_to(number_str: str) -> str:
 def async_send_whatsapp(number, name, seat, event_time):
     threading.Thread(
         target=send_whatsapp_template_concert,
-        args=(number, name, seat, event_time)
+        args=(number, name, seat, event_time),
+        daemon=True,
     ).start()
 
 
@@ -100,6 +92,35 @@ SCOPES = [
 
 app = Flask(__name__)
 
+# -------------------- CONCURRENCY GUARDS ----------------------
+# Fast anti-double-click cache with TTL
+_recent_cache = {}
+_recent_cache_lock = threading.Lock()
+FAST_DUP_WINDOW_SEC = int(os.getenv("FAST_DUP_WINDOW_SEC", "8"))  # adjustable window
+
+def _now():
+    return int(time.time())
+
+def is_fast_duplicate(name: str, mobile: str, seat: int) -> bool:
+    """
+    Prevents rapid duplicate submissions from the same user for the same seat.
+    Entries expire after FAST_DUP_WINDOW_SEC.
+    """
+    key = f"{name.strip().lower()}|{mobile.strip()}|{seat}"
+    now = _now()
+    with _recent_cache_lock:
+        # purge old
+        to_del = [k for k, t in _recent_cache.items() if now - t > FAST_DUP_WINDOW_SEC]
+        for k in to_del:
+            _recent_cache.pop(k, None)
+
+        if key in _recent_cache:
+            return True
+        _recent_cache[key] = now
+        return False
+
+# Global write lock: guarantees atomic "check-then-append" against the sheet
+sheet_write_lock = threading.Lock()
 
 # ---------- Google Sheets ----------
 def build_creds():
@@ -118,14 +139,18 @@ def get_sheet():
 
 
 def is_duplicate_booking(ws, name, mobile, seat):
-    """Return True if same booking exists."""
+    """Return True if same booking exists (Name+Mobile+Seat)."""
+    # NOTE: This is intentionally a read of the whole sheet.
+    # We will call it ONLY inside the global write lock or for coarse pre-checks.
     rows = ws.get_all_records()
-
+    name_cmp = name.strip().lower()
+    mobile_cmp = mobile.strip()
+    seat_cmp = str(seat)
     for row in rows:
         if (
-            str(row.get("Name", "")).strip().lower() == name.strip().lower() and
-            str(row.get("Mobile", "")).strip() == mobile.strip() and
-            str(row.get("Selected Seats", "")).strip() == str(seat)
+            str(row.get("Name", "")).strip().lower() == name_cmp and
+            str(row.get("Mobile", "")).strip() == mobile_cmp and
+            str(row.get("Selected Seats", "")).strip() == seat_cmp
         ):
             return True
 
@@ -216,7 +241,10 @@ def submit():
 
     try:
         all_confirmed = []
-        rows_to_write = []  # ---------- BATCH WRITING FIX ----------
+        # We'll collect candidate rows and WhatsApp payloads,
+        # then write atomically under a lock, re-checking duplicates.
+        candidate_rows = []
+        candidate_wa = []
 
         for booking in bookings:
             user_code = str(booking.get("user_code", "")).strip()
@@ -236,29 +264,68 @@ def submit():
 
             for (uc, nm, mb, seat) in row_tuples:
 
+                # ---- FAST anti-double-click (TTL in-memory) ----
                 if is_fast_duplicate(nm, mb, seat):
-                    print(f"[SKIP] FAST DUPLICATE for {nm} Seat {seat}")
+                    print(f"[SKIP] FAST duplicate (cache) -> {nm}, {mb}, seat {seat}")
                     continue
-                if is_duplicate_booking(ws, nm, mb, seat):
-                    print(f"[SKIP] SHEET DUPLICATE for {nm} Seat {seat}")
-                    continue
-                # ---------- Replace append_row with batch ----------
-                rows_to_write.append([timestamp, uc, nm, mb, str(seat)])
-                all_confirmed.append(seat)
 
-                # ---------- ASYNC WHATSAPP FIX ----------
+                # (Coarse) pre-check to reduce noise (not atomic, final check happens in lock)
+                if is_duplicate_booking(ws, nm, mb, seat):
+                    print(f"[SKIP] Already in sheet (pre-check) -> {nm}, seat {seat}")
+                    continue
+
+                candidate_rows.append([timestamp, uc, nm, mb, str(seat)])
+                candidate_wa.append((mb, nm, seat, event_time))
+
+        # ---------- Atomic section: re-check + append once ----------
+        written_rows = []
+        written_wa = []
+        if candidate_rows:
+            with sheet_write_lock:
+                # Re-pull records and filter candidates that are truly new
+                existing = ws.get_all_records()
+                # Build a quick lookup set for current sheet
+                existing_keys = set()
+                for r in existing:
+                    nm = str(r.get("Name", "")).strip().lower()
+                    mb = str(r.get("Mobile", "")).strip()
+                    st = str(r.get("Selected Seats", "")).strip()
+                    existing_keys.add(f"{nm}|{mb}|{st}")
+
+                filtered_rows = []
+                filtered_wa = []
+                for row, wa in zip(candidate_rows, candidate_wa):
+                    nm = row[2].strip().lower()
+                    mb = row[3].strip()
+                    st = str(row[4]).strip()
+                    key = f"{nm}|{mb}|{st}"
+                    if key in existing_keys:
+                        print(f"[SKIP] Duplicate (atomic check) -> {row[2]}, seat {row[4]}")
+                        continue
+                    # mark as existing to prevent duplicates among our own batch too
+                    existing_keys.add(key)
+                    filtered_rows.append(row)
+                    filtered_wa.append(wa)
+
+                if filtered_rows:
+                    ws.append_rows(filtered_rows)
+                    written_rows = filtered_rows
+                    written_wa = filtered_wa
+
+        # build confirmation and send WhatsApp only for rows actually written
+        if written_rows:
+            all_confirmed.extend([int(r[4]) for r in written_rows])
+            for mb, nm, seat, event_time in written_wa:
                 async_send_whatsapp(mb, nm, seat, event_time)
 
-        if rows_to_write:
-            ws.append_rows(rows_to_write)
-
-        final = ", ".join(map(str, all_confirmed))
+        final = ", ".join(map(str, all_confirmed)) if all_confirmed else "none"
         return jsonify({
             "ok": True,
             "message": f"Thank you for registering! Seat(s) {final} confirmed."
-        }), 200  # FIXED (correct HTTP success)
+        }), 200
 
     except Exception as e:
+        print("[ERROR] submit failed:", e)
         return jsonify({"ok": False, "message": f"Failed: {e}"}), 500
 
 
@@ -293,6 +360,12 @@ def clear_sheet_route():
         return jsonify({"ok": True, "message": "Sheet cleared"})
     except Exception as e:
         return jsonify({"ok": False, "message": str(e)})
+
+
+# (Optional) health endpoint to help keep instance warm (for QR scans)
+@app.route("/health")
+def health():
+    return jsonify({"ok": True}), 200
 
 
 if __name__ == "__main__":
