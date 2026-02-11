@@ -14,46 +14,78 @@ from twilio.rest import Client
 
 TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")  # fallback to sandbox if not set
-TWILIO_CONTENT_SID_CONCERT = os.getenv("TWILIO_CONTENT_SID_CONCERT")  # e.g., HXb5d6ab...
+TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM")  # e.g., whatsapp:+919901760422
+TWILIO_CONTENT_SID_CONCERT = os.getenv("TWILIO_CONTENT_SID_CONCERT")  # HX...
 
 twilio_client = Client(TWILIO_SID, TWILIO_AUTH)
 
+
+def _format_wa_to(number_str: str) -> str:
+    """Ensure destination number is formatted as whatsapp:+<E.164>"""
+    digits = re.sub(r"\D+", "", number_str or "")
+
+    if digits.startswith("91") and len(digits) == 12:
+        return f"whatsapp:+{digits}"
+    elif len(digits) == 10:
+        return f"whatsapp:+91{digits}"
+    else:
+        print(f"[WARN] Unexpected mobile format input: {number_str} -> {digits}")
+        return f"whatsapp:+{digits}"
+
+
 def send_whatsapp_template_concert(to_number: str, name: str, seat: int, event_time: str):
     """
-    Sends the approved WhatsApp Content Template via Twilio.
+    Sends WhatsApp Content Template (Production Correct)
     Variables mapping:
-        {{1}} -> name
-        {{2}} -> seat
-        {{3}} -> event_time
+    {{1}} -> name
+    {{2}} -> seat
+    {{3}} -> event_time
     """
+
     if not (TWILIO_SID and TWILIO_AUTH and TWILIO_WHATSAPP_FROM and TWILIO_CONTENT_SID_CONCERT):
-        print("Template send skipped: Missing Twilio Content SID or credentials.")
+        print("[ERROR] Missing Twilio credentials or Content SID")
+        print({
+            "TWILIO_SID": bool(TWILIO_SID),
+            "TWILIO_AUTH": bool(TWILIO_AUTH),
+            "TWILIO_WHATSAPP_FROM": TWILIO_WHATSAPP_FROM,
+            "TWILIO_CONTENT_SID_CONCERT": TWILIO_CONTENT_SID_CONCERT,
+        })
         return None
+
     try:
-        msg = twilio_client.messages.create(
-            from_=TWILIO_WHATSAPP_FROM,
-            to=f"whatsapp:+91{to_number}",
-            content_sid=TWILIO_CONTENT_SID_CONCERT,
-            content_variables=json.dumps({
-                "1": name,
+        to_formatted = _format_wa_to(to_number)
+
+        payload = {
+            "from_": TWILIO_WHATSAPP_FROM,
+            "to": to_formatted,
+            "content_sid": TWILIO_CONTENT_SID_CONCERT,
+            "content_variables": json.dumps({
+                "1": (name or "").strip(),
                 "2": str(seat),
-                "3": event_time
+                "3": (event_time or "").strip()
             })
-        )
-        print("Template WhatsApp sent:", msg.sid)
+        }
+
+        print("[INFO] Sending WhatsApp Template Payload:", payload)
+
+        msg = twilio_client.messages.create(**payload)
+
+        print("[INFO] Template WhatsApp SENT:", msg.sid)
         return msg.sid
+
     except Exception as e:
-        print("Template send error:", e)
+        print("[ERROR] WhatsApp Template Send Failed:", e)
         return None
+
 # -------------------------------------------------------------------------------
 
-# ------------------ YOUR EXISTING CONFIG (UNCHANGED) ---------------------------
+
+# ------------------ EXISTING CONFIG --------------------------------------------
 GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "ConcertBookings")
 GOOGLE_SHEET_KEY = os.getenv("GOOGLE_SHEET_KEY")
 SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE", "/etc/secrets/service_account.json")
 APP_BASE_URL = os.getenv("APP_BASE_URL", "https://concert-seats-70k7.onrender.com")
-CLEAR_TOKEN = os.getenv("CLEAR_TOKEN")  # Optional security token
+CLEAR_TOKEN = os.getenv("CLEAR_TOKEN")
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -62,9 +94,11 @@ SCOPES = [
 
 app = Flask(__name__)
 
+
 # ---------- Google Sheets ----------
 def build_creds():
     return Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+
 
 def get_sheet():
     creds = build_creds()
@@ -76,18 +110,19 @@ def get_sheet():
         ws.append_row(["Timestamp", "User Code", "Name", "Mobile", "Selected Seats"])
     return ws
 
+
 def clear_google_sheet_values():
     ws = get_sheet()
-    ws.batch_clear(["A2:ZZZ"])  # Clears all rows except header
-    return "Sheet contents cleared below header."
+    ws.batch_clear(["A2:ZZZ"])
+    return "Sheet cleared"
+
 
 # ---------- Helpers ----------
 def extract_ints_from_string(s: str):
-    """Extract all integer numbers from a string."""
     return [int(x) for x in re.findall(r"\d+", s or "")]
 
+
 def normalize_seats(seats):
-    """Normalize seats input into an ordered list of integers."""
     result = []
     if isinstance(seats, list):
         for item in seats:
@@ -99,8 +134,8 @@ def normalize_seats(seats):
         result.extend(extract_ints_from_string(seats))
     return result
 
+
 def normalize_mobile_to_list(mobile):
-    """Normalize mobile(s) to a list of digit-only strings."""
     def only_digits(s):
         return "".join(re.findall(r"\d+", s or ""))
 
@@ -111,20 +146,20 @@ def normalize_mobile_to_list(mobile):
         out = [only_digits(p) for p in parts]
     else:
         out = []
+
     return [m for m in out if m]
 
+
 def normalize_names_to_list(name):
-    """Normalize name(s) to a list."""
     if isinstance(name, list):
         return [str(n).strip() for n in name if str(n).strip()]
     elif isinstance(name, str):
         parts = [p.strip() for p in name.split(",")] if "," in name else [name.strip()]
         return [p for p in parts if p]
-    else:
-        return []
+    return []
+
 
 def pair_rows_for_booking(user_code, names_list, mobiles_list, seats_ordered):
-    """Build rows to append to the sheet based on provided lists."""
     rows = []
     n_names = len(names_list)
     n_mobiles = len(mobiles_list)
@@ -132,140 +167,103 @@ def pair_rows_for_booking(user_code, names_list, mobiles_list, seats_ordered):
 
     for m in mobiles_list:
         if len(m) < 10:
-            raise ValueError("Invalid mobile number: each must have at least 10 digits.")
+            raise ValueError("Invalid mobile number")
 
     if n_names == n_seats and n_mobiles == n_seats:
-        for i in range(n_seats):
-            rows.append((user_code, names_list[i], mobiles_list[i], seats_ordered[i]))
-        return rows
+        return [(user_code, names_list[i], mobiles_list[i], seats_ordered[i]) for i in range(n_seats)]
 
-    if n_names == 1 and n_mobiles == 1 and n_seats >= 1:
-        for seat in seats_ordered:
-            rows.append((user_code, names_list[0], mobiles_list[0], seat))
-        return rows
+    if n_names == 1 and n_mobiles == 1:
+        return [(user_code, names_list[0], mobiles_list[0], s) for s in seats_ordered]
 
     if n_names == 1 and n_mobiles == n_seats:
-        for i in range(n_seats):
-            rows.append((user_code, names_list[0], mobiles_list[i], seats_ordered[i]))
-        return rows
+        return [(user_code, names_list[0], mobiles_list[i], seats_ordered[i]) for i in range(n_seats)]
 
     if n_mobiles == 1 and n_names == n_seats:
-        for i in range(n_seats):
-            rows.append((user_code, names_list[i], mobiles_list[0], seats_ordered[i]))
-        return rows
+        return [(user_code, names_list[i], mobiles_list[0], seats_ordered[i]) for i in range(n_seats)]
 
-    raise ValueError(
-        "Cannot pair names, mobiles, and seats. "
-        "Ensure either counts all match, or single name+mobile with multiple seats."
-    )
+    raise ValueError("Cannot pair names/mobiles/seats")
+
 
 # ---------- Routes ----------
 @app.route("/", methods=["GET"])
 def index():
     return render_template("index.html", seat_count=310)
 
+
 @app.route("/submit", methods=["POST"])
 def submit():
     data = request.get_json(force=True) or {}
 
-    if isinstance(data, list):
-        bookings = data
-    elif isinstance(data, dict) and "users" in data:
-        bookings = data["users"]
-    else:
-        bookings = [data]
+    bookings = data["users"] if isinstance(data, dict) and "users" in data else (data if isinstance(data, list) else [data])
 
     ws = get_sheet()
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     try:
-        all_confirmed_seats = []
+        all_confirmed = []
 
         for booking in bookings:
             user_code = str(booking.get("user_code", "")).strip()
-            names_list = normalize_names_to_list(booking.get("name", ""))
-            mobiles_list = normalize_mobile_to_list(booking.get("mobile", ""))
-            seats_ordered = normalize_seats(booking.get("seats", []))
+            names = normalize_names_to_list(booking.get("name", ""))
+            mobiles = normalize_mobile_to_list(booking.get("mobile", ""))
+            seats = normalize_seats(booking.get("seats", []))
 
-            if not names_list or not mobiles_list or not seats_ordered:
-                return jsonify({
-                    "ok": False,
-                    "message": "Name(s), Mobile(s), and at least one seat are required."
-                }), 400
+            if not names or not mobiles or not seats:
+                return jsonify({"ok": False, "message": "Name, Mobile, Seat required"}), 400
 
-            invalid_seats = [s for s in seats_ordered if s < 1 or s > 310]
-            if invalid_seats:
-                return jsonify({
-                    "ok": False,
-                    "message": f"Invalid seat numbers: {invalid_seats}. Allowed range is 1-310."
-                }), 400
+            invalid = [s for s in seats if s < 1 or s > 310]
+            if invalid:
+                return jsonify({"ok": False, "message": f"Invalid seats: {invalid}"}), 400
 
-            try:
-                row_tuples = pair_rows_for_booking(user_code, names_list, mobiles_list, seats_ordered)
-            except ValueError as ve:
-                return jsonify({"ok": False, "message": str(ve)}), 400
-
-            # Use a dynamic event time; can be generated or taken from ENV
-            event_time_str = os.getenv("EVENT_TIME_STR", "February 28th, 2026 at 7:00 PM")
+            row_tuples = pair_rows_for_booking(user_code, names, mobiles, seats)
+            event_time = os.getenv("EVENT_TIME_STR", "January 31st, 2026 at 7:00 PM")
 
             for (uc, nm, mb, seat) in row_tuples:
-                # Save to Google Sheet
                 ws.append_row([timestamp, uc, nm, mb, str(seat)])
-                all_confirmed_seats.append(seat)
+                all_confirmed.append(seat)
 
-                # ----------------- SEND WHATSAPP TEMPLATE (ONLY) -----------------
-                # Business-initiated compliant send (outside 24h window allowed)
-                send_whatsapp_template_concert(mb, nm, seat, event_time_str)
-                # -----------------------------------------------------------------
+                send_whatsapp_template_concert(mb, nm, seat, event_time)
 
-        confirmed_seats = ", ".join(map(str, all_confirmed_seats))
+        final = ", ".join(map(str, all_confirmed))
         return jsonify({
             "ok": True,
-            "message": (
-                "Thank you for registering for the Music Concert! "
-                f"Your seat number(s) {confirmed_seats} are confirmed. "
-                "We look forward to seeing you there!"
-            )
-        }), 310  # NOTE: 310 is a non-standard status code; keeping as in your original
+            "message": f"Thank you for registering! Seat(s) {final} confirmed."
+        }), 310
 
     except Exception as e:
-        return jsonify({"ok": False, "message": f"Failed to save: {e}"}), 500
+        return jsonify({"ok": False, "message": f"Failed: {e}"}), 500
 
-@app.route("/booked-seats", methods=["GET"])
+
+@app.route("/booked-seats")
 def booked_seats():
     try:
         ws = get_sheet()
         col_values = ws.col_values(5)[1:]
-        booked = []
-        for v in col_values:
-            if v:
-                booked.extend([int(s.strip()) for s in v.split(",") if s.strip().isdigit()])
+        booked = [int(s.strip()) for v in col_values for s in v.split(",") if s.strip().isdigit()]
         return jsonify({"booked": booked})
     except Exception as e:
-        return jsonify({"booked": [], "error": str(e)}), 500
+        return jsonify({"booked": [], "error": str(e)})
 
-@app.route("/qr", methods=["GET"])
+
+@app.route("/qr")
 def qr():
     target = APP_BASE_URL.rstrip("/")
     img = qrcode.make(target)
     buf = BytesIO()
-    img.save(buf, format="PNG")
+    img.save(buf, "PNG")
     buf.seek(0)
-    response = send_file(buf, mimetype="image/png")
-    response.headers["Cache-Control"] = "public, max-age=86400"
-    return response
+    return send_file(buf, mimetype="image/png")
+
 
 @app.route("/clear-sheet", methods=["POST"])
 def clear_sheet_route():
-    if CLEAR_TOKEN:
-        auth = request.headers.get("X-CLEAR-TOKEN")
-        if not auth or auth != CLEAR_TOKEN:
-            return jsonify({"ok": False, "message": "Unauthorized"}), 401
+    if CLEAR_TOKEN and request.headers.get("X-CLEAR-TOKEN") != CLEAR_TOKEN:
+        return jsonify({"ok": False, "message": "Unauthorized"}), 401
     try:
-        msg = clear_google_sheet_values()
-        return jsonify({"ok": True, "message": msg})
+        return jsonify({"ok": True, "message": clear_google_sheet_values()})
     except Exception as e:
-        return jsonify({"ok": False, "message": str(e)}), 500
+        return jsonify({"ok": False, "message": str(e)})
+
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
