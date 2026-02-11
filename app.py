@@ -1,3 +1,4 @@
+
 import os
 import json
 import re
@@ -8,24 +9,64 @@ from google.oauth2.service_account import Credentials
 import qrcode
 from io import BytesIO
 
+# ----------------- TWILIO WHATSAPP INTEGRATION (ADDED) -----------------
 from twilio.rest import Client
+
 TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")  # fallback to sandbox if not set
+TWILIO_CONTENT_SID_CONCERT = os.getenv("TWILIO_CONTENT_SID_CONCERT")  # Content Template SID (HX...)
 
 twilio_client = Client(TWILIO_SID, TWILIO_AUTH)
 
 def send_whatsapp_message(to_number: str, message: str):
-    """Send WhatsApp confirmation through Twilio."""
+    """
+    Send a free-text WhatsApp message via Twilio.
+    Works only if the user is within the 24-hour customer service window.
+    (If outside window, use the template sender below.)
+    """
+    if not (TWILIO_SID and TWILIO_AUTH and TWILIO_WHATSAPP_FROM):
+        print("WhatsApp send skipped: Twilio env vars missing.")
+        return None
     try:
-        twilio_client.messages.create(
+        msg = twilio_client.messages.create(
             from_=TWILIO_WHATSAPP_FROM,
             to=f"whatsapp:+91{to_number}",
             body=message
         )
+        print("Free-text WhatsApp sent:", msg.sid)
+        return msg.sid
     except Exception as e:
-        print("WhatsApp send error:", e)
+        print("WhatsApp free-text send error:", e)
+        return None
 
+def send_whatsapp_template_concert(to_number: str, name: str, seat: int, event_time: str):
+    """
+    Send the approved Content Template first (production-correct).
+    Variables map:
+        {{1}} -> name
+        {{2}} -> seat
+        {{3}} -> event_time
+    """
+    if not (TWILIO_SID and TWILIO_AUTH and TWILIO_WHATSAPP_FROM and TWILIO_CONTENT_SID_CONCERT):
+        print("Template send skipped: Missing Twilio Content SID or creds.")
+        return None
+    try:
+        msg = twilio_client.messages.create(
+            from_=TWILIO_WHATSAPP_FROM,
+            to=f"whatsapp:+91{to_number}",
+            content_sid=TWILIO_CONTENT_SID_CONCERT,
+            content_variables=json.dumps({
+                "1": name,
+                "2": str(seat),
+                "3": event_time
+            })
+        )
+        print("Template WhatsApp sent:", msg.sid)
+        return msg.sid
+    except Exception as e:
+        print("Template send error:", e)
+        return None
 # -----------------------------------------------------------------------
 
 # Environment variables
@@ -66,9 +107,11 @@ def clear_google_sheet_values():
 # ---------- Helpers ----------
 
 def extract_ints_from_string(s: str):
+    """Extract all integer numbers from a string."""
     return [int(x) for x in re.findall(r"\d+", s or "")]
 
 def normalize_seats(seats):
+    """Normalize seats input into an ordered list of integers."""
     result = []
     if isinstance(seats, list):
         for item in seats:
@@ -81,6 +124,7 @@ def normalize_seats(seats):
     return result
 
 def normalize_mobile_to_list(mobile):
+    """Normalize mobile(s) to a list of digit-only strings."""
     def only_digits(s):
         return "".join(re.findall(r"\d+", s or ""))
 
@@ -94,6 +138,7 @@ def normalize_mobile_to_list(mobile):
     return [m for m in out if m]
 
 def normalize_names_to_list(name):
+    """Normalize name(s) to a list."""
     if isinstance(name, list):
         return [str(n).strip() for n in name if str(n).strip()]
     elif isinstance(name, str):
@@ -103,6 +148,7 @@ def normalize_names_to_list(name):
         return []
 
 def pair_rows_for_booking(user_code, names_list, mobiles_list, seats_ordered):
+    """Build rows to append to the sheet based on provided lists."""
     rows = []
     n_names = len(names_list)
     n_mobiles = len(mobiles_list)
@@ -132,7 +178,10 @@ def pair_rows_for_booking(user_code, names_list, mobiles_list, seats_ordered):
             rows.append((user_code, names_list[i], mobiles_list[0], seats_ordered[i]))
         return rows
 
-    raise ValueError("Cannot pair names, mobiles, and seats correctly.")
+    raise ValueError(
+        "Cannot pair names, mobiles, and seats. "
+        "Ensure either counts all match, or single name+mobile with multiple seats."
+    )
 
 # ---------- Routes ----------
 
@@ -181,17 +230,34 @@ def submit():
             except ValueError as ve:
                 return jsonify({"ok": False, "message": str(ve)}), 400
 
+            # Prepare a dynamic event time string (customize per your event scheduling)
+            # Example: you can compute or read from ENV; here we keep it simple
+            event_time_str = os.getenv("EVENT_TIME_STR", "January 31st, 2026 at 7:00 PM")
+
             for (uc, nm, mb, seat) in row_tuples:
+                # Save each seat allocation to Google Sheet
                 ws.append_row([timestamp, uc, nm, mb, str(seat)])
                 all_confirmed_seats.append(seat)
-                # ----------------- SEND WHATSAPP MESSAGE (ADDED) -----------------
+
+                # --------------- Messaging ---------------
+                # Build a user-friendly text (works within 24h window)
                 whatsapp_text = (
-                    f"Hello {nm}, your Music Concert seat is confirmed!\n"
-                    f"?? Seat Number: {seat}\n"
-                    "Thank you for registering!"
+                    f"Hi {nm},\n"
+                    f"Thank you for registering for the Music Concert!\n"
+                    f"Your seat number is {seat}.\n"
+                    "We warmly invite you to join us for an exciting musical evening filled with "
+                    "captivating melodies, cherished memories, and unforgettable entertainment.\n"
+                    f"Event Timing: {event_time_str}\n"
+                    "Event Address: Potter's House, above Westside 3rd Floor, Gachibowli Stadium Road, Hyderabad, Telangana 500032.\n"
+                    "We look forward to seeing you there!"
                 )
-                send_whatsapp_message(mb, whatsapp_text)
-                # -----------------------------------------------------------------
+
+                # A) Try free-text if user is within 24h window
+                _ = send_whatsapp_message(mb, whatsapp_text)
+
+                # B) Always send the template (production-safe for business-initiated cases)
+                send_whatsapp_template_concert(mb, nm, seat, event_time_str)
+                # ----------------------------------------
 
         confirmed_seats = ", ".join(map(str, all_confirmed_seats))
         return jsonify({
@@ -201,7 +267,7 @@ def submit():
                 f"Your seat number(s) {confirmed_seats} are confirmed. "
                 "We look forward to seeing you there!"
             )
-        }),310
+        }), 310
 
     except Exception as e:
         return jsonify({"ok": False, "message": f"Failed to save: {e}"}), 500
