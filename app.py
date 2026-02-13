@@ -20,7 +20,23 @@ TWILIO_AUTH = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM")  # e.g., whatsapp:+919901760422
 TWILIO_CONTENT_SID_CONCERT = os.getenv("TWILIO_CONTENT_SID_CONCERT")  # HX...
 
-twilio_client = Client(TWILIO_SID, TWILIO_AUTH)
+# STEP 5 (Part 1): Lazy-init Twilio client with a lock to avoid import-time overhead.
+_twilio_client = None
+_twilio_client_lock = threading.Lock()
+
+
+def get_twilio_client():
+    """
+    Lazily initialize and cache the Twilio client.
+    Returns None if credentials are not present.
+    """
+    global _twilio_client
+    if _twilio_client is not None:
+        return _twilio_client
+    with _twilio_client_lock:
+        if _twilio_client is None and TWILIO_SID and TWILIO_AUTH:
+            _twilio_client = Client(TWILIO_SID, TWILIO_AUTH)
+    return _twilio_client
 
 
 def _format_wa_to(number_str: str) -> str:
@@ -45,8 +61,9 @@ def async_send_whatsapp(number, name, seat, event_time):
 
 
 def send_whatsapp_template_concert(to_number: str, name: str, seat: int, event_time: str):
-
-    if not (TWILIO_SID and TWILIO_AUTH and TWILIO_WHATSAPP_FROM and TWILIO_CONTENT_SID_CONCERT):
+    # Use lazy client
+    client = get_twilio_client()
+    if not (client and TWILIO_WHATSAPP_FROM and TWILIO_CONTENT_SID_CONCERT):
         print("[ERROR] Missing Twilio credentials or Content SID")
         return None
 
@@ -66,7 +83,7 @@ def send_whatsapp_template_concert(to_number: str, name: str, seat: int, event_t
 
         print("[INFO] Sending WA Template:", payload)
 
-        msg = twilio_client.messages.create(**payload)
+        msg = client.messages.create(**payload)
 
         print("[INFO] Template WhatsApp SENT:", msg.sid)
         return msg.sid
@@ -127,9 +144,27 @@ def build_creds():
     return Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
 
 
+# STEP 5 (Part 2): Lazy-init gspread client and reuse it.
+_gspread_client = None
+_gspread_client_lock = threading.Lock()
+
+
+def get_gspread_client():
+    """
+    Lazily initialize and cache an authorized gspread client.
+    """
+    global _gspread_client
+    if _gspread_client is not None:
+        return _gspread_client
+    with _gspread_client_lock:
+        if _gspread_client is None:
+            creds = build_creds()
+            _gspread_client = gspread.authorize(creds)
+    return _gspread_client
+
+
 def get_sheet():
-    creds = build_creds()
-    client = gspread.authorize(creds)
+    client = get_gspread_client()
     sh = client.open_by_key(GOOGLE_SHEET_KEY) if GOOGLE_SHEET_KEY else client.open(GOOGLE_SHEET_NAME)
     ws = sh.sheet1
     values = ws.get_all_values()
@@ -370,4 +405,6 @@ def health():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
+    # Use Flask dev server only for local runs. On Render, run via Gunicorn:
+    # gunicorn app:app --workers 1 --threads 8 --timeout 180 --bind 0.0.0.0:$PORT
     app.run(host="0.0.0.0", port=port, debug=False)
