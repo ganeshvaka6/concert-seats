@@ -259,9 +259,42 @@ def pair_rows_for_booking(user_code, names_list, mobiles_list, seats_ordered):
     raise ValueError("Cannot pair names/mobiles/seats")
 
 
+# ---------- Cold-start optimizations ----------
+# 1) Background warmup (Sheets + Twilio), fired on first /health or /
+_warmup_done = False
+_warmup_lock = threading.Lock()
+
+def _do_warmup():
+    try:
+        # Touch Google Sheets quickly
+        ws = get_sheet()
+        _ = ws.row_count  # trivial access to ensure the call/scope is live
+
+        # Touch Twilio client
+        _ = get_twilio_client()
+
+        print("[WARMUP] Completed")
+    except Exception as e:
+        # Never crash; just log. If creds are missing, this is expected.
+        print("[WARMUP] Skipped/failed:", e)
+
+def trigger_warmup_async():
+    global _warmup_done
+    if _warmup_done:
+        return
+    with _warmup_lock:
+        if _warmup_done:
+            return
+        threading.Thread(target=_do_warmup, daemon=True).start()
+        _warmup_done = True
+
+# 2) 30s cache for /booked-seats to avoid repeated Sheet calls during bursts
+_booked_cache = {"data": [], "ts": 0}
+_BOOKED_TTL = int(os.getenv("BOOKED_CACHE_TTL_SEC", "30"))
 # ---------- Routes ----------
 @app.route("/", methods=["GET"])
 def index():
+    trigger_warmup_async()
     return render_template("index.html", seat_count=300)
 
 
@@ -367,9 +400,17 @@ def submit():
 @app.route("/booked-seats")
 def booked_seats():
     try:
+        now = time.time()
+        if now - _booked_cache["ts"] < _BOOKED_TTL:
+            return jsonify({"booked": _booked_cache["data"]})
+
         ws = get_sheet()
         col_values = ws.col_values(5)[1:]
         booked = [int(s.strip()) for v in col_values for s in v.split(",") if s.strip().isdigit()]
+
+        _booked_cache["data"] = booked
+        _booked_cache["ts"] = now
+
         return jsonify({"booked": booked})
     except Exception as e:
         return jsonify({"booked": [], "error": str(e)})
@@ -400,6 +441,7 @@ def clear_sheet_route():
 # (Optional) health endpoint to help keep instance warm (for QR scans)
 @app.route("/health")
 def health():
+    trigger_warmup_async()
     return jsonify({"ok": True}), 200
 
 
