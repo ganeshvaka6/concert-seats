@@ -22,14 +22,14 @@
     #registration-section {
         text-align: center;
         margin: 20px auto;
-        max-width: 900px;
+        max-width: 980px;
         background: #fff;
         padding: 20px;
         border-radius: 8px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
 
-    /* === Seat window: vertical stack of rows, horizontally scrollable === */
+    /* Seat window: vertical stack of rows, horizontally scrollable */
     #seat-container {
         display: flex;                 /* stack rows vertically */
         flex-direction: column;
@@ -38,8 +38,8 @@
         max-width: 100%;
         overflow-x: auto;              /* horizontal scroll for the entire table */
         -webkit-overflow-scrolling: touch;
-        padding-bottom: 8px;           /* space for scrollbar on mobile */
-        border: 1px solid #ddd;        /* optional visual boundary */
+        padding: 12px 8px;
+        border: 1px solid #ddd;        /* visual boundary */
         border-radius: 6px;
         background: #fafafa;
     }
@@ -82,26 +82,55 @@
         background-color: #6c757d;
         color: white;
         cursor: not-allowed;
+        border: 2px solid #6c757d;
     }
 
-    /* === Insert the larger space after seat positions 5 and 10 in EACH row === */
-    .row .seat:nth-child(5) { margin-right: var(--middle-gap); }  /* gap between 5 and 6 */
-    .row .seat:nth-child(10) { margin-right: var(--middle-gap); } /* gap between 10 and 11 */
+    /* Larger space after seat positions 5 and 10 in EACH row */
+    .row .seat:nth-child(5) { margin-right: var(--middle-gap); }   /* gap between 5 and 6 */
+    .row .seat:nth-child(10) { margin-right: var(--middle-gap); }  /* gap between 10 and 11 */
+
+    #legend {
+        display: flex;
+        gap: 16px;
+        justify-content: center;
+        align-items: center;
+        margin: 10px 0 18px 0;
+        font-size: 14px;
+        color: #333;
+    }
+    .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .legend-box {
+        width: 18px;
+        height: 18px;
+        border-radius: 3px;
+        border: 2px solid transparent;
+        display: inline-block;
+    }
+    .legend-available { background: #fff; border-color: #28a745; }
+    .legend-selected  { background: #28a745; border-color: #000; }
+    .legend-booked    { background: #6c757d; border-color: #6c757d; }
 
     #selected-info {
-        max-width: 500px;
+        max-width: 640px;
         margin: 20px auto;
         background: #fff;
         padding: 15px;
         border-radius: 8px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
+    #selected-info h3 { margin-top: 0; }
     #selected-info div { margin-bottom: 10px; }
     input[type="text"] {
         width: 45%;
-        padding: 5px;
+        padding: 6px 8px;
         margin: 5px;
         box-sizing: border-box;
+        border: 1px solid #ccc;
+        border-radius: 5px;
     }
     button {
         background-color: #007bff;
@@ -112,6 +141,10 @@
         cursor: pointer;
     }
     button:hover { background-color: #0056b3; }
+    button:disabled {
+        background-color: #7aaef0;
+        cursor: not-allowed;
+    }
 
     .blink-text {
         color: #dc3545;
@@ -123,7 +156,11 @@
         0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; }
     }
 
-    /* Optional: slightly shrink seats on very small screens (still scrollable). */
+    .subtle {
+        color: #666; font-size: 13px; margin-top: 6px;
+    }
+
+    /* Responsive tweaks for small screens */
     @media (max-width: 480px) {
         :root {
             --seat-size: 34px;
@@ -139,47 +176,60 @@
 <body>
 
 <div id="registration-section">
-    <h1>The Potter's House<br>Special Live Music Concert</h1>
+    <h1>The Potter's House<br>Special Weekend Movie Screening</h1>
     <p class="blink-text">Limited Slots for Free Registration</p>
-    <p><strong>Event Timing:</strong> February 28th, 2026, at 7:00 PM</p>
+    <p><strong>Event Timing:</strong> February 21st, 2026, at 7:00 PM</p>
     <p><strong>Event Address:</strong><br>
         Potter's House, 3rd Floor, above Westside,<br>
-        next to Himagiri Hospital,Gachibowli Stadium Road,<br>
+        next to Himagiri Hospital, Gachibowli Stadium Road,<br>
         Rajeev Gandhi Nagar, Indira Nagar,<br>
         Gachibowli, Hyderabad, Telangana 500032
     </p>
-    <div style="font-size:18px; color:#007bff; margin:15px 0;">Register here:</div>
 
+    <div id="legend">
+        <span class="legend-item"><span class="legend-box legend-available"></span> Available</span>
+        <span class="legend-item"><span class="legend-box legend-selected"></span> Selected</span>
+        <span class="legend-item"><span class="legend-box legend-booked"></span> Booked</span>
+    </div>
+
+    <div style="font-size:18px; color:#007bff; margin:10px 0 12px;">Register here:</div>
     <div id="seat-container"></div>
+    <div class="subtle">Tip: You can horizontally scroll rows if they overflow on small screens.</div>
 </div>
 
 <div id="selected-info">
     <h3>Selected Seats</h3>
     <div id="seat-details"></div>
-    <button id="submit-btn">Book Seats</button>
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <div id="selected-count" class="subtle">No seats selected</div>
+        <button id="submit-btn">Book Seats</button>
+    </div>
 </div>
 
 <script>
-const seatCount = 300;   // Total seats
+/* Use Flask-provided seat_count if available; fallback to 150 */
+const seatCount = (typeof {{ seat_count | tojson | safe }} !== 'undefined' && {{ seat_count | tojson | safe }} !== null)
+  ? {{ seat_count | tojson | safe }}
+  : 150;
+
 const seatsPerRow = 15;  // 15 seats per row (visual gaps after 5 and 10)
 let selectedSeats = [];
 
+/* Load seats and mark already-booked ones */
 async function loadSeats() {
     const seatContainer = document.getElementById('seat-container');
 
-    // Fetch booked seats from server
     let bookedSeats = [];
     try {
-        const response = await fetch('/booked-seats');
+        const response = await fetch('/booked-seats', { cache: 'no-store' });
         const data = await response.json();
         bookedSeats = Array.isArray(data.booked) ? data.booked : [];
     } catch (e) {
-        console.warn('Booked seats fetch failed, rendering all as available.');
+        console.warn('Booked seats fetch failed, rendering all as available.', e);
     }
 
-    // Render rows. Each row: 15 seat elements; gaps created by CSS nth-child margins.
     let seatNumber = 1;
-    const totalRows = Math.ceil(seatCount / seatsPerRow); // 210 => 14 rows
+    const totalRows = Math.ceil(seatCount / seatsPerRow);
 
     for (let row = 1; row <= totalRows; row++) {
         const rowDiv = document.createElement('div');
@@ -208,12 +258,10 @@ async function loadSeats() {
     }
 }
 
-// Click handler reads the seat number from the element itself (stable per element)
+/* Click handler always uses the element the listener was attached to */
 function onSeatClick(event) {
-    // In case inner content is clicked, ensure we target the .seat element
-    const seat = event.currentTarget; // always the element the listener was attached to
+    const seat = event.currentTarget; // .seat element
     const seatNumber = parseInt(seat.dataset.seat, 10);
-
     toggleSeat(seat, seatNumber);
 }
 
@@ -232,13 +280,26 @@ function toggleSeat(seat, seatNumber) {
 
 function updateSelectedInfo() {
     const seatDetails = document.getElementById('seat-details');
-    seatDetails.innerHTML = selectedSeats.map(s => `
+    const selectedCount = document.getElementById('selected-count');
+
+    seatDetails.innerHTML = selectedSeats
+      .sort((a, b) => a - b)
+      .map(s => `
         <div>
             <strong>Your Selected Seat Number: ${s}</strong><br>
             <input type="text" placeholder="Name" id="name-${s}">
             <input type="text" placeholder="Phone number" id="mobile-${s}">
         </div>
     `).join('');
+
+    selectedCount.textContent = selectedSeats.length
+      ? `Selected: ${selectedSeats.length} seat(s): ${selectedSeats.slice().sort((a,b)=>a-b).join(', ')}`
+      : 'No seats selected';
+}
+
+/* Basic digits-only cleanup for phones */
+function digitsOnly(s) {
+    return (s || '').replace(/\D+/g, '');
 }
 
 document.getElementById('submit-btn').addEventListener('click', async () => {
@@ -250,7 +311,7 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
     const bookingData = selectedSeats.map(s => ({
         seat: s,
         name: (document.getElementById(`name-${s}`).value || '').trim(),
-        mobile: (document.getElementById(`mobile-${s}`).value || '').trim()
+        mobile: digitsOnly((document.getElementById(`mobile-${s}`).value || '').trim())
     }));
 
     for (const b of bookingData) {
@@ -258,7 +319,15 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
             alert(`Please enter Name and Phone for Seat ${b.seat}`);
             return;
         }
+        if (b.mobile.length < 10) {
+            alert(`Please enter a valid 10-digit phone number for Seat ${b.seat}`);
+            return;
+        }
     }
+
+    const submitBtn = document.getElementById('submit-btn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Booking...';
 
     try {
         const response = await fetch('/submit', {
@@ -271,12 +340,28 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
             })
         });
 
+        // ? Check HTTP status BEFORE parsing JSON (prevents false "failed" popups)
+        if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            throw new Error(`HTTP ${response.status} ${response.statusText}: ${text}`);
+        }
+
         const result = await response.json();
         alert(result.message);
-        if (result.ok) location.reload();
+
+        if (result.ok) {
+            // Refresh to render newly booked seats as "booked"
+            location.reload();
+        } else {
+            // If backend returns ok:false but 200, keep UI enabled for retry
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Book Seats';
+        }
     } catch (e) {
         console.error('Submit failed:', e);
         alert('Booking failed. Please try again.');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Book Seats';
     }
 });
 
