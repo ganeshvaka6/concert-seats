@@ -295,7 +295,7 @@ _BOOKED_TTL = int(os.getenv("BOOKED_CACHE_TTL_SEC", "30"))
 @app.route("/", methods=["GET"])
 def index():
     trigger_warmup_async()
-    return render_template("index.html", seat_count=300)
+    return render_template("index.html", seat_count=150)
 
 
 @app.route("/submit", methods=["POST"])
@@ -323,7 +323,7 @@ def submit():
             if not names or not mobiles or not seats:
                 return jsonify({"ok": False, "message": "Name, Mobile, Seat required"}), 400
 
-            invalid = [s for s in seats if s < 1 or s > 300]
+            invalid = [s for s in seats if s < 1 or s > 150]
             if invalid:
                 return jsonify({"ok": False, "message": f"Invalid seats: {invalid}"}), 400
 
