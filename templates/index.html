@@ -171,6 +171,49 @@
         #selected-info { max-width: 95%; padding: 12px; }
         input[type="text"] { width: 100%; margin: 6px 0; }
     }
+    /* ================================
+       ADDITIONS: WhatsApp label + info bar
+       (Non-breaking; original styles preserved)
+       ================================ */
+    .whatsapp-input-wrap {
+        display: inline-flex;
+        align-items: center;
+        width: 45%;                 /* match your input width */
+        margin: 5px;                /* match your input margin */
+    }
+    .whatsapp-label {
+        background: #25D366;
+        color: #fff;
+        padding: 8px 10px;
+        border-radius: 5px 0 0 5px;
+        border: 1px solid #1ea954;
+        border-right: none;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+    .whatsapp-input-wrap input[type="text"] {
+        width: 100%;                /* fill the remaining space in the wrap */
+        border-radius: 0 5px 5px 0; /* connect with label */
+        margin: 0;                  /* prevent double margins inside the wrap */
+    }
+
+    /* Info bar */
+    .notice-bar {
+        display: none;              /* hidden until a seat is selected */
+        background: #f1f8ff;
+        border: 1px solid #b6daff;
+        color: #0a3d62;
+        padding: 10px 12px;
+        border-radius: 8px;
+        font-size: 14px;
+        margin: 6px 0 12px 0;
+        text-align: left;
+    }
+
+    /* Mobile tweak: stack full width */
+    @media (max-width: 480px) {
+        .whatsapp-input-wrap { width: 100%; }
+    }
 </style>
 </head>
 <body>
@@ -200,6 +243,9 @@
 <div id="selected-info">
     <h3>Selected Seats</h3>
     <div id="seat-details"></div>
+    <div id="wa-notice" class="notice-bar">
+        ? We will send confirmation ticket message to WhatsApp.
+    </div>
     <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
         <div id="selected-count" class="subtle">No seats selected</div>
         <button id="submit-btn">Book Seats</button>
@@ -288,13 +334,19 @@ function updateSelectedInfo() {
         <div>
             <strong>Your Selected Seat Number: ${s}</strong><br>
             <input type="text" placeholder="Name" id="name-${s}">
+            <span class="whatsapp-input-wrap">
+                <span class="whatsapp-label">WhatsApp</span>
             <input type="text" placeholder="Phone number" id="mobile-${s}">
+            </span>
         </div>
     `).join('');
 
     selectedCount.textContent = selectedSeats.length
       ? `Selected: ${selectedSeats.length} seat(s): ${selectedSeats.slice().sort((a,b)=>a-b).join(', ')}`
       : 'No seats selected';
+    // Show/hide the info bar based on selection
+    const notice = document.getElementById('wa-notice');
+    if (notice) notice.style.display = selectedSeats.length ? 'block' : 'none';
 }
 
 /* Basic digits-only cleanup for phones */
