@@ -273,6 +273,9 @@ def _do_warmup():
         # Touch Twilio client
         _ = get_twilio_client()
 
+        # >>> ADDED: start the one-shot reminder scheduler
+        schedule_one_shot_reminder()
+
         print("[WARMUP] Completed")
     except Exception as e:
         # Never crash; just log. If creds are missing, this is expected.
@@ -445,6 +448,171 @@ def health():
     return jsonify({"ok": True}), 200
 
 
+# =========================
+# >>> ADDED: Reminder logic
+# =========================
+
+# Additional imports for scheduler
+from datetime import timezone, timedelta  # (kept separate to not disturb your existing imports)
+
+# Optional: separate Content SID for reminder (falls back to concert template if not set)
+TWILIO_CONTENT_SID_REMINDER = os.getenv("TWILIO_CONTENT_SID_REMINDER")
+
+# Runtime guards
+_reminder_thread_started = False
+_reminder_thread_lock = threading.Lock()
+_reminder_sent_flag = False  # prevents re-sending in the same runtime
+
+
+def send_whatsapp_template_reminder(to_number: str, name: str, seat: int, event_time: str):
+    """
+    Sends a reminder template (fallback to concert template if reminder SID missing).
+    Keeps your existing variable mapping: "1"=name, "2"=seat, "3"=event_time
+    """
+    client = get_twilio_client()
+    content_sid_reminder = TWILIO_CONTENT_SID_REMINDER or TWILIO_CONTENT_SID_CONCERT
+
+    if not (client and TWILIO_WHATSAPP_FROM and content_sid_reminder):
+        print("[ERROR] Missing Twilio credentials or Content SID for reminder")
+        return None
+
+    try:
+        to_formatted = _format_wa_to(to_number)
+        payload = {
+            "from_": TWILIO_WHATSAPP_FROM,
+            "to": to_formatted,
+            "content_sid": content_sid_reminder,
+            "content_variables": json.dumps({
+                "1": name,
+                "2": str(seat),
+                "3": event_time
+            })
+        }
+        print("[INFO] Sending WA Reminder:", payload)
+        msg = client.messages.create(**payload)
+        print("[INFO] Reminder WhatsApp SENT:", msg.sid)
+        return msg.sid
+    except Exception as e:
+        print("[ERROR] WhatsApp Reminder Send Failed:", e)
+        return None
+
+
+def async_send_whatsapp_reminder(number, name, seat, event_time):
+    threading.Thread(
+        target=send_whatsapp_template_reminder,
+        args=(number, name, seat, event_time),
+        daemon=True,
+    ).start()
+
+
+def get_all_attendees(ws):
+    """
+    Returns list of tuples (name, mobile, seat) for all rows.
+    """
+    attendees = []
+    rows = ws.get_all_records()
+    for r in rows:
+        nm = str(r.get("Name", "")).strip()
+        mb = str(r.get("Mobile", "")).strip()
+        seat_str = str(r.get("Selected Seats", "")).strip()
+        if nm and mb and seat_str.isdigit():
+            attendees.append((nm, mb, int(seat_str)))
+    return attendees
+
+
+def _parse_event_datetime():
+    """
+    Parse EVENT_DATETIME_ISO from env.
+    Example: 2026-02-28T19:00:00+05:30 (IST)
+    """
+    iso_str = os.getenv("EVENT_DATETIME_ISO")
+    if not iso_str:
+        raise ValueError("EVENT_DATETIME_ISO not set. Example: 2026-02-28T19:00:00+05:30")
+    try:
+        dt = datetime.fromisoformat(iso_str)  # supports +HH:MM offset
+    except Exception as e:
+        raise ValueError(f"Invalid EVENT_DATETIME_ISO format: {iso_str} - {e}")
+    if dt.tzinfo is None:
+        # Assume IST if not provided
+        dt = dt.replace(tzinfo=timezone(timedelta(hours=5, minutes=30)))
+    return dt
+
+
+def _seconds_until(ts: datetime):
+    now = datetime.now(tz=ts.tzinfo)
+    return max(0, int((ts - now).total_seconds()))
+
+
+def schedule_one_shot_reminder():
+    """
+    Runs once per process to send reminders 3 hours before the event.
+    Controlled by env:
+      ENABLE_REMINDER_SCHEDULER=true
+      EVENT_DATETIME_ISO=2026-02-28T19:00:00+05:30
+      REMINDER_LEAD_SECONDS=10800
+    """
+    if os.getenv("ENABLE_REMINDER_SCHEDULER", "false").lower() != "true":
+        print("[REMINDER] Scheduler disabled by env")
+        return
+
+    global _reminder_thread_started
+    with _reminder_thread_lock:
+        if _reminder_thread_started:
+            return
+        _reminder_thread_started = True
+
+    def _runner():
+        global _reminder_sent_flag
+        try:
+            event_dt = _parse_event_datetime()
+            lead_sec = int(os.getenv("REMINDER_LEAD_SECONDS", "10800"))  # default 3 hours
+            reminder_ts = event_dt - timedelta(seconds=lead_sec)
+
+            wait_for = _seconds_until(reminder_ts)
+            if wait_for > 0:
+                print(f"[REMINDER] Sleeping {wait_for} sec until reminder window...")
+                time.sleep(wait_for)
+            else:
+                print("[REMINDER] Event is within/earlier than lead window; sending immediately.")
+
+            if _reminder_sent_flag:
+                print("[REMINDER] Already sent in this runtime, skipping")
+                return
+
+            # Fetch latest attendees and send
+            ws = get_sheet()
+            attendees = get_all_attendees(ws)
+            event_time_str = os.getenv("EVENT_TIME_STR", "February 28th, 2026 at 7:00 PM")
+
+            print(f"[REMINDER] Sending reminders to {len(attendees)} attendees...")
+            for (nm, mb, seat) in attendees:
+                async_send_whatsapp_reminder(mb, nm, seat, event_time_str)
+
+            _reminder_sent_flag = True
+            print("[REMINDER] All reminders queued.")
+        except Exception as e:
+            print("[REMINDER] Scheduler failed:", e)
+
+    threading.Thread(target=_runner, daemon=True).start()
+
+
+# (Optional) Admin endpoint to trigger reminders via a Render Cron Job, protected by CLEAR_TOKEN
+@app.route("/admin/send-reminders", methods=["POST"])
+def admin_send_reminders():
+    if CLEAR_TOKEN and request.headers.get("X-CLEAR-TOKEN") != CLEAR_TOKEN:
+        return jsonify({"ok": False, "message": "Unauthorized"}), 401
+    try:
+        ws = get_sheet()
+        attendees = get_all_attendees(ws)
+        event_time_str = os.getenv("EVENT_TIME_STR", "February 28th, 2026 at 7:00 PM")
+        for (nm, mb, seat) in attendees:
+            async_send_whatsapp_reminder(mb, nm, seat, event_time_str)
+        return jsonify({"ok": True, "count": len(attendees)})
+    except Exception as e:
+        return jsonify({"ok": False, "message": str(e)}), 500
+# =========================
+# >>> END ADDED
+# =========================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     # Use Flask dev server only for local runs. On Render, run via Gunicorn:
