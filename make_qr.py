@@ -2,7 +2,7 @@
 import os
 import qrcode
 
-APP_BASE_URL = os.getenv("APP_BASE_URL", "https://concert-seats-70k7.onrender.com")
+APP_BASE_URL = os.getenv("APP_BASE_URL", "https://concert-seats-1wao.onrender.com")
 
 # Use root if you don’t have a /book-seat route
 endpoint = "/"
