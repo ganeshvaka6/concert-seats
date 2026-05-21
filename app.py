@@ -392,15 +392,7 @@ def submit():
         final = ", ".join(map(str, all_confirmed)) if all_confirmed else "none"
         return jsonify({
             "ok": True,
-            "message": f"Dear Participant,
-
-Thank you for registering for our Free IT Testing Live Demo Session!
-
-Your registration has been successfully completed. We’re excited to have you join us for this interactive session.
-
-Your seat number: {final}
-
-Thank you"
+            "message": f"Thank you for registering! Seat(s) {final} confirmed."
         }), 200
 
     except Exception as e:
