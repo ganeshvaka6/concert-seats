@@ -394,9 +394,9 @@ def submit():
             "ok": True,
             "message": f"""Dear Participant,
 
-        Thank you for registering for our live Music Concert!
+        Thank you for registering for our live Movie Night!
 
-        Your registration has been successfully completed. We’re excited to have you join us for this Music Concert.
+        Your registration has been successfully completed. We’re excited to have you join us for this Movie Night.
 
         Your seat number: {final}
 
