@@ -394,8 +394,8 @@ def submit():
             "ok": True,
             "message": f"""Dear Participant,
 
- Thank you for registering for our Free IT Testing Live Demo Session!
-Your registration has been successfully completed. We’re excited to have you join us for this interactive session.
+ Thank you for registering for Ultimate Game Night Experience!
+Your registration has been successfully completed. We’re excited to have you join us for this event.
 
         Your seat number: {final}
 
